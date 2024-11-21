@@ -18,13 +18,6 @@ class AbstractArc:
             vertices = arc.split(', ')  # Split the arc string into vertices
             unique_vertices.update(vertices)  # Add vertices to the set
         return sorted(unique_vertices)  # Return the sorted list of unique vertices
-    
-    # def find_abstract_vertices(self):
-    #     # Find abstract vertices which include Centers or vertices containing in-bridges
-    #     abstract_v_in_list = [arc.split(', ')[1] for arc in self.In_list]
-    #     abstract_v_out_list = [arc.split(', ')[0] for arc in self.Out_list]
-    #     abstract_vertices = self.Centers_list + abstract_v_in_list + abstract_v_out_list
-    #     return self.unique(abstract_vertices)
 
     def find_abstract_vertices(self):
         abstract_v_in_list = [arc.split(', ')[1] for arc in self.In_list]
@@ -98,44 +91,6 @@ class AbstractArc:
         print(f"All paths found as arcs: {all_paths}")  # Print all raw paths (as arcs) for reference
 
         return abstract_arcs
-
-
-    # def make_abstract_arcs_stepB(self, abstract_arcs):
-    # # Ensure abstract_arcs is a list
-    #     if isinstance(abstract_arcs, tuple):
-    #         abstract_arcs = list(abstract_arcs)
-        
-    #     # Set to keep track of in-vertex pairs that we've already processed for self-loops
-    #     processed_in_vertices = set()
-
-    #     # Iterate through all in-bridges to check for self-loops
-    #     for in_bridge in self.In_list:
-    #         # Extract the in-vertex (second part of the in-bridge)
-    #         in_vertex = in_bridge.split(', ')[1]
-
-    #         # Skip if this in_vertex has already been processed for a self-loop
-    #         if in_vertex in processed_in_vertices:
-    #             continue
-
-    #         # Mark this vertex as processed for self-loop
-    #         processed_in_vertices.add(in_vertex)
-
-    #         # Find self-loop paths (in_vertex to itself)
-    #         paths = utils.find_all_paths(self.R2, in_vertex, in_vertex)
-    #         print(f"Self-loop paths from {in_vertex} to itself: {paths}")
-
-    #         # If self-loops are found, add them to the abstract arcs
-    #         if paths:
-    #             # Append the self-loop path to the abstract arcs
-    #             formatted_arc = f"{in_vertex}, {in_vertex}"
-    #             if formatted_arc not in abstract_arcs:
-    #                 abstract_arcs.append(formatted_arc)  # Add self-loop arc to abstract arcs
-    #                 print("Formatted abstract arc (self-loop):", formatted_arc)
-
-    #     # Debug: Print the abstract arcs after processing
-    #     print(f"Abstract arcs after Step B: {abstract_arcs}")
-
-    #     return abstract_arcs
 
     def make_abstract_arcs_stepB(self, abstract_arcs):
     # Ensure abstract_arcs is a list

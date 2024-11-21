@@ -212,18 +212,18 @@ def ProcessR1(arcs_list, l_attribute_list, c_attribute_list, R1, Centers_list, I
 2. **Initialize AbstractArc Class**:
     - An instance of the `AbstractArc` class is created with the provided data: `R1`, `R2`, `In_list`, `Out_list`, `Centers_list`, and `arcs_list`.
 
-3. **Step 1: Find Abstract Vertices**:
+3. **Find Abstract Vertices**:
     - The `find_abstract_vertices()` method is called on the `AbstractArc` instance to find vertices that will participate in abstract arc creation. The result is printed.
 
-4. **Step 2: Create Abstract Arcs (Step A)**:
+4. **Create Abstract Arcs (Step A)**:
     - The `make_abstract_arcs_stepA()` method generates abstract arcs based on the identified abstract vertices.
     - If this step encounters an error, it is caught and an error message is printed.
 
-5. **Step 3: Add Self-Loops (Step B)**:
+5. **Add Self-Loops (Step B)**:
     - The `make_abstract_arcs_stepB()` method is called to add self-loops to the abstract arcs.
     - If an error occurs, it is caught and an error message is printed.
 
-6. **Step 4: Finalize Abstract Arcs (Step C)**:
+6. **Finalize Abstract Arcs (Step C)**:
     - The `make_abstract_arcs_stepC()` method is invoked to finalize the abstract arcs.
     - Errors are caught and printed as well.
 

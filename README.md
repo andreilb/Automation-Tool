@@ -340,7 +340,7 @@ If cycles are detected, the **eRU List** will reflect the calculated **eRU** val
 - If no cycles are detected in R2, the function will print `"No cycles detected in R2."` to indicate that no further cycle-based calculations are performed.
 - The `calculate_eRU_for_arcs` method assumes that each arc has a corresponding **l-attribute**; if any arc is missing this attribute, an error may be raised in the cycle detection and eRU calculation processes.
 
-### `Cycle` 'cycle.py'
+## `Cycle` 'cycle.py'
 
 The `Cycle` class is used to detect cycles in a directed graph represented by a list of arcs (edges). It supports processing arcs and vertices, detecting cycles through depth-first search (DFS), evaluating the presence of cycles, and calculating Expanded Reusability (eRU) for the arcs involved in cycles. The class is initialized with a list of arcs, which are processed to create a graph structure. It then provides methods for cycle detection and cycle-related calculations.
 

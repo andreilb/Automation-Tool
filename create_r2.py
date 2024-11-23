@@ -2,64 +2,157 @@ from cycle import Cycle
 
 def ProcessR2(R2):
     """
-    Process R2 components: extract arcs, vertices, attributes, and calculate eRU.
-    Automatically prints the results.
+    Processes the R2 component of the Robustness Diagram with Loop and Time Controls (RDLT).
+    It extracts arcs, vertices, and their respective attributes from the R2 component,
+    evaluates the cycles present, and calculates the Expanded Reusability (eRU) for each arc.
+    The results are printed to the console.
 
     Args:
-        R2 (list): List of arcs in R2 (each arc is a dictionary with 'arc', 'c-attribute', 'l-attribute').
+        R2 (list): List of dictionaries, where each dictionary represents an arc in R2. 
+                   Each dictionary must have the following keys:
+                   - 'arc': A string representing the arc in the form 'vertex1, vertex2'.
+                   - 'c-attribute': A string or number representing the c-attribute of the arc.
+                   - 'l-attribute': A string or number representing the l-attribute of the arc.
+
+    Returns:
+        None: This function does not return a value. It prints the results of processing R2.
+
+    Raises:
+        KeyError: If any expected key ('arc', 'c-attribute', or 'l-attribute') is missing in any arc dictionary.
     """
-    # Extract components from R2
+    # Extract components from R2 (arcs, vertices, and attributes)
     arcs_list_R2 = [r['arc'] for r in R2]
-    vertices_list_R2 = sorted(set([v for arc in arcs_list_R2 for v in arc.split(', ')]))
-    c_attribute_list_R2 = [r['c-attribute'] for r in R2]
-    l_attribute_list_R2 = [r['l-attribute'] for r in R2]
+    vertices_list_R2 = sorted(set([v for arc in arcs_list_R2 for v in arc.split(', ')]))  # Get unique vertices
+    c_attribute_list_R2 = [r['c-attribute'] for r in R2]  # List of c-attributes for each arc
+    l_attribute_list_R2 = [r['l-attribute'] for r in R2]  # List of l-attributes for each arc
 
-    # Initialize the Cycle object and evaluate cycles
-    L_Attributes = [arc['l-attribute'] for arc in R2 if 'l-attribute' in arc]
-    cycle_detector = Cycle(R2)  # Create the Cycle object with R2 data
+    # Initialize the Cycle object and evaluate cycles in R2
+    L_Attributes = [arc['l-attribute'] for arc in R2 if 'l-attribute' in arc]  # List of l-attributes
+    cycle_detector = Cycle(R2)  # Create the Cycle object using the R2 data
     cycle_R2 = cycle_detector.evaluate_cycle()  # Evaluate cycles in R2
-    eRU_values = cycle_detector.calculate_eRU_for_arcs(L_Attributes)
-  # Calculate eRU for arcs in R2
+    eRU_values = cycle_detector.calculate_eRU_for_arcs(L_Attributes)  # Calculate eRU for arcs in R2
 
-    # Initialize eRU_list_R2 to store eRU values for each arc
-    eRU_list_R2 = [0] * len(arcs_list_R2)  # Default all eRU values to 0
-
+    # Initialize eRU list with default values
+    eRU_list_R2 = [0] * len(arcs_list_R2)  # Default eRU value for each arc is 0
+    
     # Check if cycles were detected in R2
     if not cycle_R2:
-        print("No cycles detected in R2.")
+        print("No cycles detected in R2.")  # Print message if no cycles were found
     else:
-        # Flatten the cycle list to simplify checking if an arc is part of a cycle
-        cycle_arcs_list = [cycle['cycle'] for cycle in cycle_R2]  # Use the list from cycle['cycle']
+        # Flatten the cycle list for easier checking if an arc is part of any cycle
+        cycle_arcs_list = [cycle['cycle'] for cycle in cycle_R2]  # Get list of arcs in each cycle
 
-        # Loop through each arc in R2 and compute its eRU
+        # Loop through each arc in R2 to compute eRU
         for idx, arc in enumerate(arcs_list_R2):
-            arc_in_cycle = False
-            cycle_l_attributes = []
+            arc_in_cycle = False  # Flag to check if the arc is in any cycle
+            cycle_l_attributes = []  # List to store l-attributes of arcs in the cycle
 
-            # Check if the arc is part of any cycle
+            # Check if the current arc is part of any cycle
             for cycle in cycle_arcs_list:
-                if arc in cycle:  # If the arc is in the cycle
+                if arc in cycle:  # If arc is part of the cycle
                     arc_in_cycle = True
-                    # Collect the l-attributes of the arcs in the cycle
+                    # Collect the l-attributes of all arcs in the cycle
                     for cycle_arc in cycle:
-                        # Get the corresponding l-attribute for each arc in the cycle
                         for r in R2:
                             if r['arc'] == cycle_arc:
-                                cycle_l_attributes.append(int(r['l-attribute']))
+                                cycle_l_attributes.append(int(r['l-attribute']))  # Store the l-attribute for each arc
 
-            # The eRU for arcs in the cycle is the minimum l-attribute in that cycle
+            # Calculate eRU for arcs that are part of a cycle
             if arc_in_cycle:
                 eRU_list_R2[idx] = min(cycle_l_attributes) if cycle_l_attributes else 0
             else:
-                # For arcs not in the cycle, eRU remains 0 (already initialized)
+                # For arcs not part of a cycle, eRU remains 0 (default value)
                 eRU_list_R2[idx] = 0
 
     # Print the results for R2
-    print(f"R2:")
+    print(f"R2:")  # Header for R2 output
     print('-' * 20)
-    print(f"Arcs List ({len(arcs_list_R2)}): {arcs_list_R2}")
-    print(f"Vertices List ({len(vertices_list_R2)}): {vertices_list_R2}")
-    print(f"C-attribute List ({len(c_attribute_list_R2)}): {c_attribute_list_R2}")
-    print(f"L-attribute List ({len(l_attribute_list_R2)}): {l_attribute_list_R2}")
-    print(f"eRU List ({len(eRU_list_R2)}): {eRU_list_R2}")
-    print('-' * 60)
+    print(f"Arcs List ({len(arcs_list_R2)}): {arcs_list_R2}")  # List of arcs in R2
+    print(f"Vertices List ({len(vertices_list_R2)}): {vertices_list_R2}")  # Unique vertices in R2
+    print(f"C-attribute List ({len(c_attribute_list_R2)}): {c_attribute_list_R2}")  # List of c-attributes
+    print(f"L-attribute List ({len(l_attribute_list_R2)}): {l_attribute_list_R2}")  # List of l-attributes
+    print(f"eRU List ({len(eRU_list_R2)}): {eRU_list_R2}")  # List of eRU values for each arc
+    print('-' * 60)  # Divider for output
+
+# from cycle import Cycle
+
+# def ProcessR2(r2_dict):
+#     """
+#     Processes the R2 components of the Robustness Diagram with Loop and Time Controls (RDLT).
+#     It extracts arcs, vertices, and their respective attributes from multiple RBS components,
+#     evaluates the cycles present, and calculates the Expanded Reusability (eRU) for each arc.
+#     The results are printed to the console.
+
+#     Args:
+#         r2_dict (dict): A dictionary where each key is an RBS (e.g., 'R2', 'R3', 'R4', 'R5'), 
+#                          and the value is a list of dictionaries, each representing an arc.
+#                          Each dictionary must have the following keys:
+#                          - 'arc': A string representing the arc in the form 'vertex1, vertex2'.
+#                          - 'c-attribute': A string or number representing the c-attribute of the arc.
+#                          - 'l-attribute': A string or number representing the l-attribute of the arc.
+#                          - 'eRU': The expanded reusability value (typically calculated).
+
+#     Returns:
+#         None: This function does not return a value. It prints the results of processing the arcs.
+#     """
+
+#     # Ensure the r2_dict is a dictionary containing multiple RBS components
+#     if isinstance(r2_dict, list):  # If r2_dict is a list, convert it to a dictionary
+#         r2_dict = {'R2': r2_dict}
+
+#     # Iterate through each RBS component in the dictionary
+#     for R_key, R2 in r2_dict.items():
+#         print(f"\nProcessing {R_key}...")  # Print which RBS is being processed
+
+#         # Extract components from each RBS (arcs, vertices, and attributes)
+#         arcs_list_R2 = [r['arc'] for r in R2]
+#         vertices_list_R2 = sorted(set([v for arc in arcs_list_R2 for v in arc.split(', ')]))  # Get unique vertices
+#         c_attribute_list_R2 = [r['c-attribute'] for r in R2]  # List of c-attributes for each arc
+#         l_attribute_list_R2 = [r['l-attribute'] for r in R2]  # List of l-attributes for each arc
+
+#         # Initialize the Cycle object and evaluate cycles in the current R2
+#         cycle_detector = Cycle(R2)  # Create the Cycle object using the current R2 data
+#         cycle_R2 = cycle_detector.evaluate_cycle()  # Evaluate cycles in R2
+#         eRU_values = cycle_detector.calculate_eRU_for_arcs(l_attribute_list_R2)  # Calculate eRU for arcs in R2
+
+#         # Initialize eRU list with default values
+#         eRU_list_R2 = [0] * len(arcs_list_R2)  # Default eRU value for each arc is 0
+        
+#         # Check if cycles were detected in R2
+#         if not cycle_R2:
+#             print(f"No cycles detected in {R_key}.")  # Print message if no cycles were found
+#         else:
+#             # Flatten the cycle list for easier checking if an arc is part of any cycle
+#             cycle_arcs_list = [cycle['cycle'] for cycle in cycle_R2]  # Get list of arcs in each cycle
+
+#             # Loop through each arc in R2 to compute eRU
+#             for idx, arc in enumerate(arcs_list_R2):
+#                 arc_in_cycle = False  # Flag to check if the arc is in any cycle
+#                 cycle_l_attributes = []  # List to store l-attributes of arcs in the cycle
+
+#                 # Check if the current arc is part of any cycle
+#                 for cycle in cycle_arcs_list:
+#                     if arc in cycle:  # If arc is part of the cycle
+#                         arc_in_cycle = True
+#                         # Collect the l-attributes of all arcs in the cycle
+#                         for cycle_arc in cycle:
+#                             for r in R2:
+#                                 if r['arc'] == cycle_arc:
+#                                     cycle_l_attributes.append(int(r['l-attribute']))  # Store the l-attribute for each arc
+
+#                 # Calculate eRU for arcs that are part of a cycle
+#                 if arc_in_cycle:
+#                     eRU_list_R2[idx] = min(cycle_l_attributes) if cycle_l_attributes else 0
+#                 else:
+#                     # For arcs not part of a cycle, eRU remains 0 (default value)
+#                     eRU_list_R2[idx] = 0
+
+#         # Print the results for the current RBS
+#         print(f"{R_key}:")  # Header for RBS output
+#         print('-' * 20)
+#         print(f"Arcs List ({len(arcs_list_R2)}): {arcs_list_R2}")  # List of arcs in R2
+#         print(f"Vertices List ({len(vertices_list_R2)}): {vertices_list_R2}")  # Unique vertices in R2
+#         print(f"C-attribute List ({len(c_attribute_list_R2)}): {c_attribute_list_R2}")  # List of c-attributes
+#         print(f"L-attribute List ({len(l_attribute_list_R2)}): {l_attribute_list_R2}")  # List of l-attributes
+#         print(f"eRU List ({len(eRU_list_R2)}): {eRU_list_R2}")  # List of eRU values for each arc
+#         print('-' * 60)  # Divider for output

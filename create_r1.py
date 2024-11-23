@@ -119,11 +119,10 @@ def ProcessR1(arcs_list, l_attribute_list, c_attribute_list, R1, Centers_list, I
     print("--------------------")
     print(f"Arcs List ({len(R1)}): {[arc['arc'] for arc in R1]}")
     print(f"Vertices List ({len(set(vertex for arc in R1 for vertex in arc['arc'].split(', ')))}): {list(set(vertex for arc in R1 for vertex in arc['arc'].split(', ')))}")
-    print(f"C-attribute List ({len(R1)}): {[arc['c-attribute'] for arc in R1]}")
-    print(f"L-attribute List ({len(R1)}): {[arc['l-attribute'] for arc in R1]}")
-    print(f"eRU List ({len(R1)}): {[arc['eRU'] for arc in R1]}")
+    print(f"C-attribute List ({len(R1)}): {[str(arc['c-attribute']) for arc in R1]}")  # Ensure all are strings
+    print(f"L-attribute List ({len(R1)}): {[str(arc['l-attribute']) for arc in R1]}")  # Ensure all are strings
+    print(f"eRU List ({len(R1)}): {[str(arc['eRU']) for arc in R1]}")  # Ensure all are strings
 
-    # Return the updated R1
     return R1
 
 if __name__ == '__main__':

@@ -4,7 +4,6 @@ This automation tool (python application) is an Automated Verification for Class
 ## Author
 - Andrei Luz B. Asoy
 - Email: abasoy@up.edu.ph
-- Student Number: 2019-08852
 - BS in Computer Science
 
 ## File Contents

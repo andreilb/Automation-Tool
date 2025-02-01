@@ -258,8 +258,7 @@ Updated R1 after adding abstract arcs:
  {'r-id': 'R1-7', 'arc': 'x5, x6', 'l-attribute': '7', 'c-attribute': 'a', 'eRU': 0},
  {'r-id': 'R1-8', 'arc': 'x6, x2', 'l-attribute': '5', 'c-attribute': 'a', 'eRU': 0},
  {'r-id': 'R1-9', 'arc': 'x6, x7', 'l-attribute': '1', 'c-attribute': '0', 'eRU': 0},
- {'r-id': 'R1-10', 'arc': 'x2, x2', 'l-attribute': '18', 'c-attribute': 'a', 'eRU': 3},
- {'r-id': 'R1-11', 'arc': 'x2, x4
+ {'r-id': 'R1-10', 'arc': 'x2, x2', 'l-attribute': '18', 'c-attribute': 'a', 'eRU': 3}
 ```
 
 ### Error Handling

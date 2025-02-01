@@ -31,21 +31,30 @@ This processes input RDLT (Robustness Diagram with Loop and Time Controls) data,
 This also integrates various components of the RDLT analysis system, checks for the existence of certain attributes (such as RBS centers and bridges), and processes both R1 and R2 data.
 
 ### Main Workflow:
-1. **Input File Processing:**
+1. **Input File Processing**
    - The script begins by initializing an `Input_RDLT` instance with a path to the input file (hardcoded or provided).
    - The `evaluate()` method of `Input_RDLT` is invoked to read and categorize the file contents, which includes separating the data into `R1`, `R2`, centers, in-bridges, and out-bridges.
 
-2. **R2 Processing:**
+2. **R2 Processing (Reset-Bound Subsystem)**
    - The script checks if `R2` and the necessary RBS components (`Centers_list`, `In_list`, and `Out_list`) exist.
    - If valid, it uses `ProcessR2` to process and print details of the `R2` data, focusing on the flow and structure of arcs.
    - It then uses the `Cycle` class to detect and evaluate cycles in the `R2` graph, printing out the cycle details if found.
 
-3. **R1 Processing:**
+3. **R1 Processing (Main Structure)**
    - If cycles are detected in `R2`, the script retrieves `R1` data from the `Input_RDLT` instance.
    - It checks and prints the retrieved `R1` data, then passes relevant lists (arcs, L-attributes, C-attributes, centers, in-bridges, and out-bridges) to the `ProcessR1` function.
    - `ProcessR1` handles abstract arcs and updates the `R1` data accordingly.
-  
-##~~~~ incomplete
+
+  4. **Cyclce Detection and Evaluation**
+     - The `Cycle` class is used to evaluate cycles in both R1 and R2. If cycles are found, they are printed with details about their structure.
+  5. **JOIN Evaluation**
+     - The `TestJoins` class evaluates whether the components of the RBS form an **OR-JOIN**.
+     - If the RBS contains ONLY OR-JOINs, only R1 is processed further; otherwise, if there are any presence of any types of JOIN, both R1 and R2 are processed in parallel.
+  6. **L-Safeness Verification**
+     - Using the matrix class, the script performs matrix operations on R1 and R2 (if necessary) to verify the **L-Safeness** of the RDLT.
+     - The **L-Safeness** of the structure is evaluated based on the matrix values. If the system is **L-safe**, the script confirms that the RDLT is **Classical Sound**. Otherwise, it flags the need for further verification.
+  7. **Activity Profile Generation**
+      - In case of violations detected during matrix evaluation, the script generates an **activity profile** through modified activity extraction that identifies which components violate the L-safeness criteria.
 
 ## `Input_RDLT` 'input_rdlt.py'
 

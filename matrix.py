@@ -45,6 +45,7 @@ class Matrix:
         self.join_safe_violations = []
         self.loop_safe_violations = []
         self.safeCA_violations = []
+        self.l_safe_vector = None
 
         # Extract arcs and graph from the RDLT structure
         self.Arcs_list = [r['arc'] for r in R]
@@ -541,12 +542,12 @@ class Matrix:
         # print("\nSafe CA: ", safe)
 
         if join_safe and loop_safe and safe:
-            l_safe = True
+            self.l_safe_vector = True
         else:
-            l_safe = False
+            self.l_safe_vector = False
 
         self.matrix_operations = matrix
-        return l_safe, matrix
+        return self.l_safe_vector, matrix
 
     def get_violations(self):
         """

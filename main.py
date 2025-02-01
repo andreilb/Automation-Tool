@@ -82,12 +82,6 @@ if __name__ == '__main__':
     print("\nProcessing R1 components...\n")
     print('-' * 60)
     initial_R1 = input_instance.getR('R1')
-    # print("This is initial R1:~~~~~~~~~~~~~~~~~~", initial_R1)
-    # print("This is Arcs List:~~~~~~~~~~~~~~~~~~", Arcs_list)
-    # print("This is L-attribute List:~~~~~~~~~~~~~~~~~~", L_attribute_list)
-    # print("This is C-attribute List:~~~~~~~~~~~~~~~~~~", C_attribute_list)
-    # print("This is Centers List:~~~~~~~~~~~~~~~~~~", Centers_list)
-    # print("This is R2:~~~~~~~~~~~~~~~~~~", R2)
     R1 = ProcessR1(
                 Arcs_list,  # List of all arcs
                 initial_R1,

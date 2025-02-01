@@ -25,7 +25,7 @@ class Input_RDLT:
         Initializes the Input_RDLT object and reads the RDLT data from the provided file.
 
         Parameters:
-            filepath (str): Path to the RDLT file. The default file path can be set in main.py.
+            - filepath (str): Path to the RDLT file. The default file path can be set in main.py.
         """
         self.filepath = Path(filepath)  # Ensure the filepath is set correctly
         self.contents = {'R': [], 'CENTER': [], 'IN': [], 'OUT': []}
@@ -49,11 +49,11 @@ class Input_RDLT:
         self.Centers_list = [center.strip() for line in self.contents['CENTER'] for center in line.split(',') if center.strip()]
         self.In_list = [line.strip() for line in self.contents['IN'] if line.strip()]
         self.Out_list = [line.strip() for line in self.contents['OUT'] if line.strip()]
-        self.Arcs_List = []  # List of arcs
-        self.Vertices_List = []  # List of vertices
-        self.C_attribute_list = []  # List of c-attributes
-        self.L_attribute_list = []  # List of l-attributes
-        self.user_input_to_evsa = []  # List of processed RDLT data
+        self.Arcs_List = []
+        self.Vertices_List = []
+        self.C_attribute_list = []
+        self.L_attribute_list = []
+        self.user_input_to_evsa = []
 
     def evaluate(self):
         """
@@ -66,7 +66,7 @@ class Input_RDLT:
             Extracts the arc, c-attribute, and l-attribute from a given line.
 
             Parameters:
-                line (str): A line containing arc data, separated by commas.
+                - line (str): A line containing arc data, separated by commas.
 
             Returns:
                 dict or None: A dictionary containing the arc and its attributes, or None for invalid lines.
@@ -85,7 +85,7 @@ class Input_RDLT:
             Extracts unique vertices from a list of arcs.
 
             Parameters:
-                arc_list (list): A list of arcs.
+                - arc_list (list): A list of arcs.
 
             Returns:
                 list: A sorted list of unique vertices.
@@ -117,8 +117,8 @@ class Input_RDLT:
         print(f"RBS components:")
         print('-' * 20)
         print(f"Centers ({len(self.Centers_list)}): ", self.Centers_list)
-        print("In: ", self.In_list)
-        print("Out: ", self.Out_list)
+        print(f"In ({len(self.In_list)}): ", self.In_list)
+        print(f"Out ({len(self.Out_list)}): ", self.Out_list)
         print('-' * 60)
 
         # Process the RDLT structure for R2, R3, etc., based on centers and arcs
@@ -129,7 +129,7 @@ class Input_RDLT:
             Extracts and processes RDLT data for each center, excluding in- and out-arcs.
 
             Parameters:
-                rdlt (dict): A dictionary representing the current RDLT.
+                - rdlt (dict): A dictionary representing the current RDLT.
 
             Returns:
                 dict or None: Processed RDLT data for the specified center, or None for invalid data.
@@ -165,7 +165,7 @@ class Input_RDLT:
             Transforms RDLT data into a final format for analysis, adding arc information, attributes, and eRU values.
 
             Parameters:
-                rdlt (dict): A dictionary representing a processed RDLT.
+                - rdlt (dict): A dictionary representing a processed RDLT.
 
             Returns:
                 dict: Transformed RDLT data with additional attributes.
@@ -201,7 +201,7 @@ class Input_RDLT:
         Fetches a specific RDLT structure (e.g., R1, R2, etc.) by its identifier.
 
         Parameters:
-            R (str): The identifier of the RDLT structure (e.g., 'R1').
+            - R (str): The identifier of the RDLT structure (e.g., 'R1').
 
         Returns:
             dict or str: The requested RDLT structure, or a warning message if not found.
@@ -217,6 +217,7 @@ if __name__ == '__main__':
     input_data.evaluate()  # Evaluates the RDLT input data
     print(input_data.getRs())  # This will print R2, R3, etc. without R1
     print(input_data.getR('R1'))  # This will print R1 structure
+
 
 
 # from pathlib import Path

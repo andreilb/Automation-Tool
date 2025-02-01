@@ -1,141 +1,180 @@
-from abstract import AbstractArc  # Ensure the AbstractArc class is imported
-from cycle import Cycle  # Ensure the Cycle class is imported
+from abstract import AbstractArc
+from cycle import Cycle
+import utils
 
-def ProcessR1(arcs_list, l_attribute_list, c_attribute_list, R1, Centers_list, In_list, Out_list, R2):
+def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
     """
-    Process R1 components: extract arcs, vertices, attributes, and calculate eRU,
-    including abstract arcs created from R2. After abstraction, detect cycles in R1
-    and update eRU for each cycle.
-    Automatically prints the results.
-    Returns the updated R1 data.
-    """
+    Process R1 components: extracts arcs, vertices, attributes, and calculates eRU.
+    If R2 exists, abstract arcs are generated from R2 and added to R1.
+    After abstraction, cycles are detected in R1 and eRU is updated accordingly.
 
+    Parameters:
+        - arcs_list (list): List of arcs in the RDLT structure.
+        - R1 (dict): Dicitonary of arcs with their attributes in R1.
+        - Centers_list (list): List of center vertices for RBS.
+        - In_list (list): List of in-bridge arcs in RBS.
+        - Out_list (list): List of out-bridge arcs in RBS.
+        - R2 (dict): The Reset-Bound Subsystem (RBS) structure.
+
+    Returns:
+        list: Updated R1 with abstract arcs and computed eRU values.
+    """
+    
     # Initialize abstract_arc_data
     abstract_arc_data = []
-
+    
     # Extract components from R1
     arcs_list_R1 = [r['arc'] for r in R1 if isinstance(r, dict) and 'arc' in r]
     vertices_list_R1 = sorted(set([v for arc in arcs_list_R1 for v in arc.split(', ')]))
     c_attribute_list_R1 = [r.get('c-attribute', '') for r in R1 if isinstance(r, dict)]
     l_attribute_list_R1 = [r.get('l-attribute', '') for r in R1 if isinstance(r, dict)]
-    
-    # Initialize AbstractArc class and generate abstract arcs
-    abstract = AbstractArc(R1, R2, In_list, Out_list, Centers_list, arcs_list)
 
-    # Find abstract vertices
-    abstract_vertices = abstract.find_abstract_vertices()
-    # print("Final Abstract vertices: ", abstract_vertices)
+    # If R2 exists, create abstract vertices and arcs
+    if R2:  # Check if R2 is not empty or None
+        # Initialize AbstractArc class and generate abstract arcs
+        abstract = AbstractArc(R1, R2, In_list, Out_list, Centers_list, arcs_list)
 
-    # Create abstract arcs
-    try:
-        prepreFinal_abstractList = abstract.make_abstract_arcs_stepA(abstract_vertices)
-    except Exception as e:
-        print(f"[ERROR] Failed to generate abstract arcs in Step A: {e}")
-        return
+        # Identify abstract vertices
+        abstract_vertices = abstract.find_abstract_vertices()
+        # print("Final Abstract vertices: ", abstract_vertices)
 
-    # Add self-loops
-    try:
-        preFinal_abstractList = abstract.make_abstract_arcs_stepB(prepreFinal_abstractList)
-    except Exception as e:
-        print(f"[ERROR] Failed to add self-loops in Step B: {e}")
-        return
+        try:
+            # Create initial abstract arcs
+            prepreFinal_abstractList = abstract.make_abstract_arcs_stepA(abstract_vertices)
+            # print("Step A PrepreFinal Abstract List on try: ", prepreFinal_abstractList)
+        except Exception as e:
+            print(f"[ERROR] Failed to generate abstract arcs in Step A: {e}")
+            return
 
-    # Finalize abstract arcs
-    try:
-        final_abstract_arcs = abstract.make_abstract_arcs_stepC(preFinal_abstractList)
-    except Exception as e:
-        print(f"[ERROR] Failed to finalize abstract arcs in Step C: {e}")
-        return
+        try:
+            # Add self-loops to abstract arcs
+            preFinal_abstractList = abstract.make_abstract_arcs_stepB(prepreFinal_abstractList)
+            # print("Step B PreFinal Abstract List on try: ", preFinal_abstractList)
+        except Exception as e:
+            print(f"[ERROR] Failed to add self-loops in Step B: {e}")
+            return
 
-    # Add r-id to abstract arcs before finding cycles
-    r_id_offset = max(
-        int(arc['r-id'].split('-')[1]) for arc in R1 if 'r-id' in arc and arc['r-id'].startswith('R1-')
-    ) + 1  # Start with the next available r-id
+        try:
+            # Finalize abstract arcs
+            final_abstract_arcs = abstract.make_abstract_arcs_stepC(preFinal_abstractList)
+            # print("Step C Final Abstract Arcs on try: ", final_abstract_arcs)
+        except Exception as e:
+            print(f"[ERROR] Failed to finalize abstract arcs in Step C: {e}")
+            return
 
-    for arc in final_abstract_arcs:
-        # Assign unique r-id to each abstract arc
-        arc['r-id'] = f'R1-{r_id_offset}'
-        r_id_offset += 1
-        abstract_arc_data.append(arc)
+        # Assign unique r-ids to abstract arcs before adding to R1
+        r_id_offset = max(
+            int(arc['r-id'].split('-')[1]) for arc in R1 if 'r-id' in arc and arc['r-id'].startswith('R1-')
+        ) + 1  # Start with the next available r-id
 
-    # Add abstract arcs with r-id to R1
-    R1.extend(abstract_arc_data)
+        for arc in final_abstract_arcs:
+            # Assign unique r-id to each abstract arc
+            arc['r-id'] = f'R1-{r_id_offset}'
+            r_id_offset += 1
+            abstract_arc_data.append(arc)
 
-   # Now detect cycles in the updated R1, which includes abstract arcs with r-id
+        # Add abstract arcs with r-id to R1
+        R1.extend(abstract_arc_data)
+
+        # print("Abstract Arcs Added to R1: ", abstract_arc_data)
+
+    else:
+        print("\nNo R2 provided, skipping abstract arc generation.\n")
+        print('-' * 30)
+
+    # Create a list to hold arcs with the minimum l-attribute across all cycles
+    all_cycle_arcs_with_min_l = []
+
+    # Detect cycles in the updated R1 (with abstract arcs included)
     cycle_instance = Cycle(R1)  # Create an instance of the Cycle class
     cycle_R1 = cycle_instance.evaluate_cycle()  # Call the method on the instance
 
     if not cycle_R1:
-        print("No cycles detected in R1.")
+        print("\nNo cycles detected in R1.\n")
+        print('-' * 30)
     else:
-        # Create a set to track processed arcs to avoid duplicate cycle detections
-        processed_cycles = set()
-        
         # Iterate over each cycle
-        for cycle in cycle_R1:
-            cycle_arcs = tuple(cycle['cycle'])  # List of arcs in the cycle (convert to tuple)
-            
-            # Check if this cycle has already been processed
-            if cycle_arcs not in processed_cycles:
-                processed_cycles.add(cycle_arcs)  # Mark this cycle as processed
-                
-                # Create a set to track processed arcs to avoid duplicate l-attribute lookups
-                processed_arcs = set()
-                cycle_l_attributes = []
-                
-                # Iterate over the arcs in this cycle
-                for arc in cycle_arcs:
-                    if arc not in processed_arcs:
-                        processed_arcs.add(arc)
-                        
-                        # Use next() to get the first matching 'l-attribute', and ensure it returns a valid value
-                        l_attribute = next((r['l-attribute'] for r in R1 if r['arc'] == arc), None)
-                        
-                        # Check if l_attribute is found and convert it to an integer
+        for cycle_data in cycle_R1:
+            cycle_arcs = cycle_data['cycle']
+            cycle_l_attributes = []
+            cycle_arcs_with_min_l = []
+
+            # Iterate over the arcs in the cycle
+            for cycle_arc in cycle_arcs:
+                # Extract the r-id and arc name
+                r_id, arc_name = cycle_arc.split(": ")
+                arc_name = arc_name.strip()
+
+                # Get the actual arc from R1 using r-id
+                actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                if actual_arc:
+                    # print(f"Processing arc: {actual_arc}")
+
+                    # Check if l-attribute exists and process it
+                    matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                    if matching_arc:
+                        l_attribute = matching_arc.get('l-attribute', None)
                         if l_attribute is not None:
                             cycle_l_attributes.append(int(l_attribute))  # Convert to int
                         else:
-                            print(f"Warning: 'l-attribute' not found for arc {arc}")
-                
-                # Now process cycle_l_attributes as needed, and do any further processing.
-                print(f"Cycle: {cycle_arcs}, l-attributes: {cycle_l_attributes}")
+                            print(f"Warning: 'l-attribute' not found for arc {actual_arc}")
+                    else:
+                        print(f"Warning: No matching arc found for {actual_arc} in R1")
+                else:
+                    print(f"Warning: No arc found in R1 for r-id {r_id}")
+
+            # Assuming that the 'ca' (critical arc) value is the minimum l-attribute in the cycle
+            ca = min(cycle_l_attributes) if cycle_l_attributes else None
+
+            if ca is not None:
+                # print(f"Critical arc 'ca' value: {ca}")
+
+                # Iterate over all arcs in the cycle and set their eRU to the 'ca' value
+                for cycle_arc in cycle_arcs:
+                    r_id, arc_name = cycle_arc.split(": ")
+                    arc_name = arc_name.strip()
+
+                    # Get the actual arc from R1 using r-id
+                    actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                    if actual_arc:
+                        # Check if the arc is not an abstract arc
+                        if 'abstract' not in actual_arc:
+                            # Find the matching arc in R1
+                            matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+
+                            if matching_arc:
+                                # Set eRU to the critical arc's 'ca' value (as string)
+                                matching_arc['eRU'] = ca
+                                # print(f"Set eRU for arc {matching_arc['arc']} to {matching_arc['eRU']}")
+
+                            # Compare l-attribute and eRU for each arc, and append arcs with the minimum l-attribute value
+                            if matching_arc and int(matching_arc['l-attribute']) == ca:
+                                cycle_arcs_with_min_l.append(matching_arc)
+                        # else:
+                        #     print(f"\nSkipping abstract arc: {actual_arc}\n")
+                        #     print('-' * 30)
+
             else:
-                print(f"Cycle {cycle_arcs} already processed, skipping.")
+                print("\nNo critical arc found in this cycle.\n")
+                print('-' * 30)
 
+            # Add all the arcs with the minimum l-attribute for this cycle to the global list
+            all_cycle_arcs_with_min_l.extend(cycle_arcs_with_min_l)
 
-            # Find the minimum l-attribute in the cycle
-            min_l_attribute = min(cycle_l_attributes)
+    #fixes incorrectly formatted eRU eith no ''
+    eRU_list = [str(r.get('eRU', '0')) for r in R1] 
 
-            # Update eRU for arcs in the cycle, except for abstract arcs (keep their eRU unchanged)
-            for cycle_arc in cycle_arcs:
-                for r in R1:
-                    if r['arc'] == cycle_arc:
-                        if 'eRU' not in r or r['eRU'] == 0:  # Only update if eRU is empty (0)
-                            r['eRU'] = min_l_attribute
-                            # print(f"Updated eRU for arc {r['arc']} to {r['eRU']}")
-
-    # Print the updated R1 after processing
+    # Print debugging results
     print("R1:")
-    print("--------------------")
-    print(f"Arcs List ({len(R1)}): {[arc['arc'] for arc in R1]}")
-    print(f"Vertices List ({len(set(vertex for arc in R1 for vertex in arc['arc'].split(', ')))}): {list(set(vertex for arc in R1 for vertex in arc['arc'].split(', ')))}")
-    print(f"C-attribute List ({len(R1)}): {[str(arc['c-attribute']) for arc in R1]}")  # Ensure all are strings
-    print(f"L-attribute List ({len(R1)}): {[str(arc['l-attribute']) for arc in R1]}")  # Ensure all are strings
-    print(f"eRU List ({len(R1)}): {[str(arc['eRU']) for arc in R1]}")  # Ensure all are strings
+    print('-' * 30)
+    print(f"Arcs List ({len(arcs_list_R1)}): {arcs_list_R1}")
+    print(f"Vertices List ({len(vertices_list_R1)}): {vertices_list_R1}")
+    print(f"C-attribute List ({len(c_attribute_list_R1)}): {c_attribute_list_R1}")
+    print(f"L-attribute List ({len(l_attribute_list_R1)}): {l_attribute_list_R1}")
+    print(f"eRU List ({len(eRU_list)}): {eRU_list}")
+    # print(f"CAs_list ({len(all_cycle_arcs_with_min_l)}): {all_cycle_arcs_with_min_l}")
+    print('-' * 60)
 
     return R1
-
-if __name__ == '__main__':
-    # Define R1, Arcs_List, L_attribute_list, etc.
-    R1 = [{'r-id': 'R1-0', 'arc': 'x1, x2', 'l-attribute': '1', 'c-attribute': 'a', 'eRU': 0},
-          {'r-id': 'R1-5', 'arc': 'x4, x5', 'l-attribute': '6', 'c-attribute': '0', 'eRU': 0}]
-    Arcs_List = ['x1, x2', 'x2, x3', 'x3, x2', 'x2, x4', 'x3, x4', 'x4, x5', 'x4, x6', 'x5, x6', 'x6, x2', 'x6, x7']
-    L_attribute_list = ['1', '2', '3', '4', '1', '6', '7', '7', '5', '1']
-    C_attribute_list = ['a', '0', '0', '0', '0', '0', 'b', 'a', 'a', '0']
-    Centers_list = ['x2']
-    In_list = ['x1, x2', 'x6, x2']
-    Out_list = ['x4, x5', 'x4, x6']
-    R2 = [{'r-id': 'R2-1', 'arc': 'x2, x3', 'l-attribute': '2', 'c-attribute': '0', 'eRU': 0},
-          {'r-id': 'R2-2', 'arc': 'x3, x2', 'l-attribute': '3', 'c-attribute': '0', 'eRU': 0}]
-
-    ProcessR1(Arcs_List, L_attribute_list, C_attribute_list, R1, Centers_list, In_list, Out_list, R2)

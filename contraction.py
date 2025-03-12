@@ -9,7 +9,7 @@ class ContractionPath:
             - R (list): The RDLT structure containing arcs.
         """
         self.R = R
-        print(f"🔍 Input RDLT: {R}")
+        print(f"Input RDLT: {R}")
         self.graph = utils.build_graph(R)
         self.contracted_path = []  # Store the final contracted path
         self.successfully_contracted_arcs = []
@@ -55,7 +55,7 @@ class ContractionPath:
         """
         Contracts arcs in a **single, continuous** path while ensuring connectivity.
         """
-        print(f"🔧 Contracting segment: {arc_list}")
+        print(f"Contracting segment: {arc_list}")
 
         superset = {'0'}
         first_arc = next((a for a in self.R if a['arc'] == arc_list[0]), None)
@@ -125,7 +125,7 @@ class ContractionPath:
         Tries all possible paths until a valid contraction is found.
         """
         source, sink = utils.get_source_and_target_vertices(self.R)
-        print(f"🔗 Attempting contraction from {source} to {sink}")
+        print(f"Attempting contraction from {source} to {sink}")
 
         self.unreached_arcs = set(arc['arc'] for arc in self.R)
         self.contracted_path = []  # Store the final contracted path
@@ -134,7 +134,7 @@ class ContractionPath:
         # Find all paths from source to sink using self.graph
         paths = utils.find_path_from_graph(self.graph, source, sink)
         if not paths:
-            print(f"🚫 No path found from {source} to {sink}.")
+            print(f"No path found from {source} to {sink}.")
             return [], self.failed_contractions
 
         # Try each path until a valid contraction is found
@@ -146,11 +146,11 @@ class ContractionPath:
             result = self.contract_segment(arc_path, source)
             if result[0] is not None:  # Check if contraction was successful
                 contracted, successful_arcs = result
-                print(f"✅ Successfully contracted path: {successful_arcs}")
+                print(f"Successfully contracted path: {successful_arcs}")
                 self.contracted_path.extend(successful_arcs)
                 break  # Stop after the first successful contraction
             else:
-                print(f"🚫 Failed to contract path: {arc_path}")
+                print(f"Failed to contract path: {arc_path}")
 
         # If no full path was contracted, check for partial contractions
         if not self.contracted_path and self.successfully_contracted_arcs:

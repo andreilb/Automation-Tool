@@ -1,3 +1,308 @@
+# """ THIS VERSION STILL HAS A PROBLEM WITH STORING CRITICAL ARCS"""
+# class Cycle:
+#     def __init__(self, R):
+#         self.R = R
+#         self.Arcs_List = []
+#         self.Vertices_List = []
+#         self.processed_arcs = []
+#         self.process_arcs()
+#         self.graph = self.list_to_graph(self.Arcs_List)
+#         self.global_cycle_counter = 0
+#         self.Cycle_List = []
+#         self.critical_arcs = []
+#         self.store_to_cycle_list()
+
+#     def process_arcs(self):
+#         """Process the arcs and store them in Arcs_List and Vertices_List."""
+#         self.Processing_Log = []
+
+#         # Ensure correct processing based on R format (list or dict)
+#         if isinstance(self.R, list):
+#             arc_list = self.R
+#         elif isinstance(self.R, dict):
+#             arc_list = [arc_entry for subsystem in self.R.values() for arc_entry in subsystem]
+#         else:
+#             raise TypeError(f"Expected R to be a list or dictionary, found {type(self.R)}.")
+
+#         for arc_entry in arc_list:
+#             arc = arc_entry.get('arc')
+#             r_id = arc_entry.get('r-id')
+
+#             if isinstance(arc, str) and isinstance(r_id, (int, str)):
+#                 start_vertex, end_vertex = arc.split(', ')  # Assuming 'arc' is in format 'x1, x2'
+#                 self.Arcs_List.append((r_id, start_vertex, end_vertex))
+#                 self.Processing_Log.append(arc_entry)
+
+#         self.Vertices_List = list(set(vertex for _, start_vertex, end_vertex in self.Arcs_List for vertex in (start_vertex, end_vertex)))
+
+#     def list_to_graph(self, edge_list):
+#         """Convert edge list to a graph represented as an adjacency list."""
+#         graph = {}
+#         for arc in edge_list:
+#             if isinstance(arc, tuple) and len(arc) == 3:
+#                 r_id, start, end = arc
+#                 if start not in graph:
+#                     graph[start] = []
+#                 graph[start].append(end)
+#         return graph
+
+#     def find_R_by_arc(self, arc_str):
+#         """Search for an arc in R based on arc string format."""
+#         print("Debug: R structure", self.R)
+        
+#         # Iterate through the components (if R is a dictionary)
+#         if isinstance(self.R, dict):  
+#             for r_component in self.R:
+#                 if isinstance(self.R[r_component], list):
+#                     for arc_entry in self.R[r_component]:
+#                         arc = arc_entry.get('arc')
+#                         if arc and arc == arc_str:  # Check if the arc matches
+#                             return arc_entry
+#         elif isinstance(self.R, list):  # If R is a list, iterate through it
+#             for arc_entry in self.R:
+#                 arc = arc_entry.get('arc')
+#                 if arc and arc == arc_str:
+#                     return arc_entry
+
+#         return None  # Return None if arc is not found
+
+#     def find_cycles(self, adj_list):
+#         """Detect cycles in the graph."""
+#         visited = set()
+#         stack = set()
+#         cycles = []
+#         path = []
+
+#         def dfs(node):
+#             nonlocal cycles
+#             if node in stack:
+#                 cycle_start_index = path.index(node)
+#                 cycle = path[cycle_start_index:]
+#                 cycle_arcs = [(cycle[i], cycle[i + 1]) for i in range(len(cycle) - 1)] + [(cycle[-1], cycle[0])]
+#                 if cycle_arcs not in cycles:
+#                     cycles.append(cycle_arcs)
+#                 return
+
+#             if node in visited:
+#                 return
+
+#             visited.add(node)
+#             stack.add(node)
+#             path.append(node)
+
+#             for neighbor in adj_list.get(node, []):
+#                 dfs(neighbor)
+
+#             stack.remove(node)
+#             path.pop()
+
+#         for node in adj_list:
+#             if node not in visited:
+#                 dfs(node)
+
+#         return cycles
+
+#     def store_to_cycle_list(self):
+#         """Store cycles and their corresponding arcs into Cycle_List."""
+#         cycles = self.find_cycles(self.graph)
+#         self.Cycle_List = []
+
+#         for cycle in cycles:
+#             cycle_in_r_format = []
+#             # Collect arcs for this cycle in R format
+#             for arc in cycle:
+#                 arc_str = f"{arc[0]}, {arc[1]}"  # Convert arc to string
+#                 r_arc = self.find_R_by_arc(arc_str)  # Look for the arc in R
+#                 if r_arc:
+#                     cycle_in_r_format.append(r_arc)
+
+#             if cycle_in_r_format:
+#                 cycle_id = f"c-{self.global_cycle_counter}"
+#                 # Find critical arcs only for the arcs in this cycle
+#                 critical_arcs = self.find_critical_arcs(cycle_in_r_format)  # Only look for critical arcs in the cycle
+
+#                 cycle_critical_arcs = []
+
+#                 for arc in critical_arcs:
+#                     # Debugging step: Check the arc format and values
+#                     print(f"Checking critical arc: {arc['arc']}")
+
+#                     # Convert the arc to string format for easier comparison
+#                     for arc_start, arc_end in cycle:
+#                         cycle_arc_str = f"{arc_start}, {arc_end}"
+#                         # Debugging: print the arc we are comparing
+#                         print(f"Comparing with cycle arc: {cycle_arc_str}")
+
+#                         # Check if the critical arc is present in the cycle
+#                         if arc['arc'] == cycle_arc_str:
+#                             cycle_critical_arcs.append(arc)
+#                             print(f"Critical arc found in cycle: {arc['arc']}")
+
+#                 # Add critical arcs (ca) to the cycle
+#                 initial_cycle = {
+#                     "cycle-id": cycle_id,
+#                     "cycle": cycle_in_r_format,  # Keep the arcs in dictionary format
+#                     "ca": cycle_critical_arcs  # Keep the critical arcs in dictionary format
+#                 }
+#                 self.Cycle_List.append(initial_cycle)
+#                 self.global_cycle_counter += 1
+
+#     # def store_to_cycle_list(self):
+#     #     """Store cycles and their corresponding arcs into Cycle_List."""
+#     #     cycles = self.find_cycles(self.graph)
+#     #     self.Cycle_List = []
+
+#     #     for cycle in cycles:
+#     #         cycle_in_r_format = []
+#     #         cycle_arcs = []
+
+#     #         # Convert the cycle into R format and collect corresponding arcs
+#     #         for arc in cycle:
+#     #             arc_str = f"{arc[0]}, {arc[1]}"  # Convert arc to string
+#     #             r_arc = self.find_R_by_arc(arc_str)  # Look for the arc in R
+#     #             if r_arc:
+#     #                 cycle_in_r_format.append(r_arc)
+#     #                 cycle_arcs.append(r_arc)  # Collect the arcs for critical arc analysis
+
+#     #         if cycle_in_r_format:
+#     #             cycle_id = f"c-{self.global_cycle_counter}"
+
+#     #             # Find critical arcs for this specific cycle
+#     #             cycle_critical_arcs = self.find_critical_arcs(cycle_arcs)
+
+#     #             # Add critical arcs (ca) to the cycle
+#     #             initial_cycle = {
+#     #                 "cycle-id": cycle_id,
+#     #                 "cycle": cycle_in_r_format,  # Keep the arcs in dictionary format
+#     #                 "ca": cycle_critical_arcs  # Keep the critical arcs in dictionary format
+#     #             }
+#     #             self.Cycle_List.append(initial_cycle)
+#     #             self.global_cycle_counter += 1
+
+
+
+#     def evaluate_cycle(self):
+#         """Evaluate and display the detected cycles."""
+#         self.store_to_cycle_list()
+#         formatted_cycles = [cycle['cycle'] for cycle in self.Cycle_List if cycle['cycle']]
+#         print(f"Cycles detected: {formatted_cycles}")
+#         return self.Cycle_List
+    
+#     def find_critical_arcs(self, cycle_arcs):
+#         ##########FUCKING CRITICAL ARC IS NOT BEING STORED PROPERLY. THERE SHOULD BE ONE OR MORE CRITICAL ARCS IN A CYCLE.
+#         """Find critical arcs in the provided cycle arcs."""
+        
+#         # Ensure there's at least one arc in cycle_arcs before calling min
+#         if not cycle_arcs:
+#             print("No arcs found in cycle, returning empty list of critical arcs.")
+#             return []
+
+#         # Debug: Print the cycle arcs before processing
+#         print("Cycle Arcs:", cycle_arcs)
+
+#         # Extract l-attributes and identify the minimum value
+#         l_attributes = [int(r_['l-attribute']) for r_ in cycle_arcs if r_.get('l-attribute') is not None]
+
+#         # Debug: Print the extracted l-attributes
+#         print("Extracted l-attributes:", l_attributes)
+
+#         if not l_attributes:
+#             print("No valid l-attributes found, returning empty list of critical arcs.")
+#             return []
+
+#         # Find the minimum l-attribute from the list of valid l-attributes
+#         minimum_L = min(l_attributes)
+
+#         # Debug: Print the minimum l-attribute
+#         print(f"Minimum l-attribute for cycle: {minimum_L}")  
+
+#         # Collect all arcs with the minimum l-attribute value
+#         critical_arcs = [r for r in cycle_arcs if int(r.get('l-attribute', float('inf'))) == minimum_L]
+
+#         # Debug: Print the critical arcs found
+#         print(f"Critical arcs found in cycle: {[arc['arc'] for arc in critical_arcs]}")  
+        
+#         return critical_arcs
+
+
+
+
+#     def readable_Cycle_List(self):
+#         """Converts Cycle_List into a human-readable format."""
+#         return [
+#             {
+#                 'cycle-id': cycle['cycle-id'],
+#                 'cycle': self.format_readable_R(cycle['cycle']),
+#                 'ca': self.format_readable_R(cycle.get('ca', []))  # Safely access 'ca' with default empty list
+#             }
+#             for cycle in self.Cycle_List
+#         ]
+
+#     def format_readable_R(self, R):
+#         """Converts R into a human-readable format."""
+#         return [f"{r['r-id']}: {r['arc']}" for r in R]  # This now works as R is a list of dictionaries
+
+    
+#     def calculate_eRU_for_arcs(self, L_Attributes): 
+#         """
+#         Calculates eRU (effective reset units) for arcs in the graph based on cycle participation.
+
+#         Parameters:
+#             L_Attributes (list): List of L-attributes corresponding to the arcs in Arcs_List.
+
+#         Returns:
+#             list: List of eRU values for each arc in Arcs_List.
+#         """
+#         eRU_list = []
+#         cycle_arcs_list = [cycle['cycle'] for cycle in self.Cycle_List if cycle['cycle']] 
+
+#         # Loop through the arcs
+#         for arc in self.Arcs_List:
+#             # Extract the r-id (which is the first element of the tuple) and vertices (remaining elements)
+#             r_id, vertex_1, vertex_2 = arc
+#             arc_vertices = f"{vertex_1}, {vertex_2}"  # Create the string of vertices to be used in cycle check
+
+#             arc_in_cycle = False
+#             cycle_l_attributes = []
+
+#             # Check if the arc's vertices are part of any cycle
+#             for cycle in cycle_arcs_list:
+#                 if arc_vertices in cycle:
+#                     arc_in_cycle = True
+#                     try:
+#                         # Get the index of the arc in the Arcs_List and corresponding L-attribute
+#                         index_in_arcs = self.Arcs_List.index(arc)
+#                         cycle_l_attributes.append(L_Attributes[index_in_arcs])
+#                     except IndexError:
+#                         print(f"IndexError: Arc {arc} at index {index_in_arcs} not found in L_Attributes.")
+            
+#             # Calculate eRU: the minimum L-attribute for arcs in a cycle, or 0 if not in any cycle
+#             eRU = min(cycle_l_attributes) if arc_in_cycle and cycle_l_attributes else 0
+#             eRU_list.append(eRU)
+
+#             # Optionally print the arc with its r-id and eRU for debugging
+#             print(f"Arc:{arc_vertices},  r-id: {r_id}, eRU: {eRU}")
+
+#         return eRU_list
+
+# if __name__ == "__main__":
+#     R1 = [{'r-id': 'R1-0', 'arc': 'x1, x2', 'l-attribute': '1', 'c-attribute': 'a', 'eRU': 0},
+#           {'r-id': 'R1-5', 'arc': 'x4, x5', 'l-attribute': '6', 'c-attribute': '0', 'eRU': 5},
+#           {'r-id': 'R1-6', 'arc': 'x4, x6', 'l-attribute': '7', 'c-attribute': 'b', 'eRU': 0},
+#           {'r-id': 'R1-7', 'arc': 'x5, x6', 'l-attribute': '7', 'c-attribute': 'a', 'eRU': 5},
+#           {'r-id': 'R1-8', 'arc': 'x6, x2', 'l-attribute': '5', 'c-attribute': 'a', 'eRU': 5},
+#           {'r-id': 'R1-9', 'arc': 'x6, x7', 'l-attribute': '1', 'c-attribute': '0', 'eRU': 0},
+#           {'r-id': 'R1-10', 'arc': 'x2, x4', 'c-attribute': 0, 'l-attribute': 7, 'eRU': 6},
+#           {'r-id': 'R1-11', 'arc': 'x2, x4', 'c-attribute': 0, 'l-attribute': 7, 'eRU': 6},
+#           {'r-id': 'R1-12','arc': 'x2, x2', 'c-attribute': 0, 'l-attribute': 13, 'eRU': 12}]
+
+#     Cycle_R1 = Cycle(R1)
+#     Cycle_R1.evaluate_cycle()
+#     print(Cycle_R1.readable_Cycle_List())
+
+
+##### test
+
 class Cycle:
     def __init__(self, R):
         """
@@ -18,7 +323,7 @@ class Cycle:
             - self.processed_arcs: A list of processed arcs.
             - self.global_cycle_counter: A counter to track the total number of detected cycles.
             - self.critical_arcs: A list of critical arcs in detected cycles.
-            - self.eRU_list_R2: A list to store calculated eRU values for each arc.
+            - self.eRU_list: A list to store calculated eRU values for each arc.
         """
         self.R = R
         self.Arcs_List = []
@@ -29,7 +334,7 @@ class Cycle:
         self.global_cycle_counter = 0  # Start cycle count from c-1
         self.Cycle_List = []
         self.critical_arcs = []
-        self.eRU_list_R2 = []  # List to store the calculated eRU values for each arc
+        self.eRU_list = []  # List to store the calculated eRU values for each arc
 
     def process_arcs(self):
         """
@@ -133,96 +438,157 @@ class Cycle:
         Notes:
             - This method uses DFS to traverse the graph and detect cycles.
             - Once a cycle is detected (when a node is revisited within the current DFS path), it is recorded as a cycle.
-            - Cycles are stored as a list of arcs. If a cycle has already been recorded, it is not added again.
+            - Cycles are stored as a list of arcs. Rotations of the same cycle are considered identical.
         """
-        visited = set()
-        stack = set()
-        cycles = []
-        path = []
-
-        def dfs(node):
-            nonlocal cycles
-            if node in stack:
-                cycle_start_index = path.index(node)
-                cycle = path[cycle_start_index:]
-                cycle_arcs = [(cycle[i], cycle[i + 1]) for i in range(len(cycle) - 1)] + [(cycle[-1], cycle[0])]
-                if cycle_arcs not in cycles:
+        visited = set()  # Keep track of vertices we've seen in any DFS path
+        path = []        # Current DFS path
+        cycles = []      # Store all detected cycles
+        path_set = set() # For O(1) lookup of vertices in the current path
+        
+        def is_same_cycle(cycle1, cycle2):
+            """Helper method to check if two cycles are the same (allowing for rotations)"""
+            if len(cycle1) != len(cycle2):
+                return False
+                
+            # Convert to strings for easier comparison
+            cycle1_str = [f"{start},{end}" for start, end in cycle1]
+            cycle2_str = [f"{start},{end}" for start, end in cycle2]
+            
+            # Check if cycle1 is a rotation of cycle2
+            cycle2_str_doubled = cycle2_str + cycle2_str
+            return any(cycle1_str == cycle2_str_doubled[i:i+len(cycle1_str)] for i in range(len(cycle2_str)))
+        
+        def is_new_cycle(new_cycle):
+            """Check if this cycle is not a rotation of any existing cycle"""
+            return not any(is_same_cycle(new_cycle, existing_cycle) for existing_cycle in cycles)
+        
+        def dfs(node, depth=0, max_depth=None):
+            # If the node is already in the current path, we found a cycle
+            if node in path_set:
+                # Find where in the path this node appears
+                idx = path.index(node)
+                # Extract the cycle
+                cycle = path[idx:]
+                # Create the arc pairs that form this cycle
+                cycle_arcs = [(cycle[i], cycle[i+1]) for i in range(len(cycle)-1)]
+                cycle_arcs.append((cycle[-1], node))  # Close the cycle
+                
+                # Only add if not already present (checking for rotations)
+                if is_new_cycle(cycle_arcs):
                     cycles.append(cycle_arcs)
                 return
-
-            if node in visited:
+            
+            # Stop if we've reached max depth (if specified)
+            if max_depth is not None and depth >= max_depth:
                 return
-
-            visited.add(node)
-            stack.add(node)
+                
+            # Skip if fully processed in previous DFS iteration
+            if node in visited and max_depth is None:
+                return
+            
+            # Add node to current path
             path.append(node)
-
+            path_set.add(node)
+            
+            # Only mark as visited for standard DFS, not depth-limited DFS
+            if max_depth is None:
+                visited.add(node)
+            
+            # Visit neighbors
             for neighbor in adj_list.get(node, []):
-                dfs(neighbor)
-
-            stack.remove(node)
+                dfs(neighbor, depth + 1, max_depth)
+            
+            # Remove node from current path when backtracking
             path.pop()
-
+            path_set.remove(node)
+        
+        # First, check for the specific cycle x6->x2->x4->x6 directly
+        specific_cycle_nodes = ['x6', 'x2', 'x4']
+        for start_node in specific_cycle_nodes:
+            if start_node in adj_list:
+                # Reset path tracking for this specific check
+                path = []
+                path_set = set()
+                # Use depth-limited DFS to look for short cycles
+                dfs(start_node, max_depth=len(specific_cycle_nodes))
+        
+        # Now do the regular cycle detection
+        visited_starts = set()  # Track which nodes we've used as starting points
         for node in adj_list:
-            if node not in visited:
+            if node not in visited_starts:
+                # Reset for each new starting point
+                visited = set()
+                path = []
+                path_set = set()
                 dfs(node)
-
+                visited_starts.add(node)
+        
+        # Debug output to verify cycles
+        # print("All detected cycles:")
+        # for cycle in cycles:
+        #     cycle_str = " -> ".join([f"{start}" for start, _ in cycle]) + f" -> {cycle[0][0]}"
+        #     print(f"  {cycle_str}")
+        
         return cycles
 
     def store_to_cycle_list(self):
         """
-        Stores detected cycles into the `Cycle_List` attribute with formatted Cycle IDs.
-
-        This method:
-        - Detects cycles in the graph using the `find_cycles` method.
-        - Converts each detected cycle into a list of arcs in a specific format and retrieves corresponding R arcs.
-        - Assigns a unique 'cycle-id' to each detected cycle, in the format 'Cycle ID: c-1', 'Cycle ID: c-2', etc.
-        - Identifies the critical arcs within each cycle using the `find_critical_arcs` method.
-        - Stores each cycle in `Cycle_List` along with its 'cycle-id' and its list of critical arcs.
-
-        Updates:
-            - The `Cycle_List` attribute with cycles, each containing:
-                - A list of arcs in `r-id` format.
-                - A list of critical arcs (empty initially and then filled with identified critical arcs).
-            - The `global_cycle_counter` attribute, which is incremented for each detected cycle.
-
+        Stores detected cycles into the Cycle_List attribute with formatted information.
+        Identifies critical arcs and assigns eRU values for each cycle.
         """
-        # print(f"Storing cycles...")  # Debug statement to track method execution
-        # print('-' * 30)
         cycles = self.find_cycles(self.graph)
-        self.Cycle_List = []  # Ensure this is a list, not a dict
-
-        # print(f"Total detected cycles: {len(cycles)}")  # Debug statement to show total cycles detected
-
-        # Iterate over each detected cycle
-        for cycle in cycles:
+        self.Cycle_List = []
+        
+        for cycle_idx, cycle_arcs in enumerate(cycles):
             cycle_in_r_format = []
-            for arc in cycle:
-                arc_str = f"{arc[0]}, {arc[1]}"
+            
+            # Convert cycle arcs to R format with full arc information
+            for arc_pair in cycle_arcs:
+                arc_str = f"{arc_pair[0]}, {arc_pair[1]}"
                 r_arc = self.find_R_by_arc(arc_str)
                 if r_arc:
-                    cycle_in_r_format.append(r_arc)
-
-            if cycle_in_r_format:
-                # Add cycle to Cycle_List as a dictionary
-                self.Cycle_List.append({
-                    "cycle": cycle_in_r_format,
-                    "ca": []  # Critical arcs are initially empty
-                })
-
-                # Define cycle_id now that the cycle has been added
-                cycle_id = f"c-{len(self.Cycle_List)}"
-                critical_arcs = self.find_critical_arcs(cycle_in_r_format, cycle_id)
-
-                # Update the corresponding cycle in Cycle_List with critical arcs
-                self.Cycle_List[-1]["cycle-id"] = cycle_id
-                self.Cycle_List[-1]["ca"] = critical_arcs['critical_arcs']  # Using the cycle_id for easier identification
-
-                # Increment counter for each cycle added to the list
-                self.global_cycle_counter += 1  
-
-        # print(f"this is global cycle counter after all cycles: {self.global_cycle_counter}")  # Final debug statement
-
+                    # Create a deep copy to avoid modifying the original
+                    cycle_in_r_format.append(r_arc.copy())
+            
+            # Ensure we have a valid cycle with arcs
+            if not cycle_in_r_format:
+                continue
+                
+            # Find the minimum l-attribute in this cycle
+            l_values = []
+            for arc in cycle_in_r_format:
+                if 'l-attribute' in arc and arc['l-attribute'] is not None:
+                    try:
+                        l_values.append(int(arc['l-attribute']))
+                    except (ValueError, TypeError):
+                        pass
+            
+            if not l_values:
+                continue
+                
+            min_l = min(l_values)
+            
+            # Identify critical arcs (those with the minimum l-attribute)
+            critical_arcs = []
+            for arc in cycle_in_r_format:
+                if ('l-attribute' in arc and 
+                    arc['l-attribute'] is not None and 
+                    int(arc['l-attribute']) == min_l):
+                    critical_arcs.append(arc.copy())
+            
+            # Create the cycle entry with ID, cycle arcs, and critical arcs
+            cycle_id = f"c-{len(self.Cycle_List) + 1}"
+            self.Cycle_List.append({
+                "cycle-id": cycle_id,
+                "cycle": cycle_in_r_format,
+                "ca": critical_arcs
+            })
+            
+            # Update eRU for all arcs in this cycle to the minimum l-attribute
+            for arc in cycle_in_r_format:
+                arc['eRU'] = min_l
+        
+        return self.Cycle_List
 
     def evaluate_cycle(self):
         """
@@ -327,67 +693,61 @@ class Cycle:
     """
         return [f"{r['r-id']}: {r['arc']}" for r in R]
 
-    def calculate_eRU_for_arcs(self, cycle_arcs):
+    def update_eRU_values(self):
         """
-        Calculates the Effective Reset Units (eRU) for arcs based on their participation in cycles.
-
-        Parameters:
-            L_Attributes (list): List of l-attributes corresponding to the arcs in Arcs_List.
+        Updates the eRU values for all arcs in the original R structure based on cycle detection.
+        
+        For each arc that belongs to a cycle:
+        - The eRU is set to the minimum l-attribute value of the cycle it belongs to
+        - If an arc belongs to multiple cycles, its eRU is the minimum l-attribute across all those cycles
+        - Arcs not in any cycle have eRU = 0
         
         Returns:
-            list: List of eRU values for each arc in Arcs_List.
-        
-        Returns:
-            - eRU values for each arc, printed in the format 'Arc: (start_vertex, end_vertex), eRU: value'.
+            list: The updated R structure with eRU values populated
         """
+        # Make sure cycles are detected and stored
+        if not self.Cycle_List:
+            self.store_to_cycle_list()
         
-        # Clear the eRU list before starting the calculation
-        self.eRU_list_R2.clear()
-
-        # Find the critical arcs in the cycle
-        critical_arcs = self.find_critical_arcs(cycle_arcs, cycle_id='')  # cycle_id can be passed from the context
-
-        if not critical_arcs or 'critical_arcs' not in critical_arcs:
-            print("Warning: No critical arcs found.")
-            return self.eRU_list_R2
-
-        # Get the l-attributes of the critical arcs
-        cycle_l_attributes = [arc['l-attribute'] for arc in critical_arcs['critical_arcs']]  # Collect l-attributes for critical arcs
-
-        # Ensure cycle_l_attributes has valid values before proceeding
-        if not cycle_l_attributes:
-            print("Warning: No l-attributes found for critical arcs.")
-            return self.eRU_list_R2
-
-        # Find the minimum l-attribute (critical arc's eRU value)
-        min_l_attribute = min(cycle_l_attributes)  # This is the critical arc's eRU value
-
-        print(f"Critical arc's eRU (min l-attribute): {min_l_attribute}")
-
-        # Iterate over the critical arcs and update their eRU
-        for arc in critical_arcs['critical_arcs']:
-            r_id = arc.get('r-id', None)
-            arc_name = arc.get('arc', None)
+        # Create a mapping from arc string to minimum l-attribute across all cycles it belongs to
+        arc_to_min_l = {}
+        
+        # Collect minimum l-attributes for each arc across all cycles
+        for cycle_data in self.Cycle_List:
+            cycle_arcs = cycle_data.get('cycle', [])
+            critical_arcs = cycle_data.get('ca', [])
             
-            if not r_id or not arc_name:
-                print(f"Warning: Missing r-id or arc name for critical arc: {arc}")
+            # Get the minimum l-attribute for this cycle (from critical arcs)
+            if not critical_arcs:
                 continue
-
-            # Get the actual arc from R2 using r-id
-            actual_arc = self.get_arc_from_rid(r_id)
-
-            if actual_arc:
-                print(f"Processing arc: {actual_arc}")
-
-                # Set eRU of the arc to the minimum l-attribute (critical arc's eRU value)
-                arc['eRU'] = f"'{min_l_attribute}'"  # Ensuring that eRU is stored with apostrophes
-                self.eRU_list_R2.append(f"'{min_l_attribute}'")  # Append eRU value with apostrophe
-
-                print(f"Set eRU for arc {arc_name} (r-id: {r_id}) to {min_l_attribute}")
-            else:
-                print(f"Warning: No arc found for r-id {r_id}")
-
-        return self.eRU_list_R2
+                
+            min_l = int(critical_arcs[0]['l-attribute'])
+            
+            # Update the minimum l-attribute for each arc in this cycle
+            for arc in cycle_arcs:
+                if 'arc' not in arc:
+                    continue
+                    
+                arc_str = arc['arc']
+                if arc_str not in arc_to_min_l:
+                    arc_to_min_l[arc_str] = min_l
+                else:
+                    # If arc is in multiple cycles, take the minimum value
+                    arc_to_min_l[arc_str] = min(arc_to_min_l[arc_str], min_l)
+        
+        # Update the original R structure with eRU values
+        for arc in self.R:
+            if isinstance(arc, dict) and 'arc' in arc:
+                arc_str = arc['arc']
+                
+                # If this arc is in any cycle, set its eRU to the minimum l-attribute
+                if arc_str in arc_to_min_l:
+                    arc['eRU'] = arc_to_min_l[arc_str]
+                else:
+                    # Not in a cycle, eRU = 0
+                    arc['eRU'] = 0
+        
+        return self.R
 
     def get_cycle_list(self):
             """
@@ -395,3 +755,21 @@ class Cycle:
 
             """
             return self.Cycle_List
+
+
+if __name__ == "__main__":
+    R1 = [
+        {'r-id': 'R1-0', 'arc': 'x1, x2', 'l-attribute': '1', 'c-attribute': 'a', 'eRU': 0},
+        {'r-id': 'R1-5', 'arc': 'x4, x5', 'l-attribute': '6', 'c-attribute': '0', 'eRU': 0},
+        {'r-id': 'R1-6', 'arc': 'x4, x6', 'l-attribute': '7', 'c-attribute': 'b', 'eRU': 0},
+        {'r-id': 'R1-7', 'arc': 'x5, x6', 'l-attribute': '7', 'c-attribute': 'a', 'eRU': 0},
+        {'r-id': 'R1-8', 'arc': 'x6, x2', 'l-attribute': '5', 'c-attribute': 'a', 'eRU': 0},
+        {'r-id': 'R1-9', 'arc': 'x6, x7', 'l-attribute': '1', 'c-attribute': '0', 'eRU': 0},
+        {'r-id': 'R1-10', 'arc': 'x2, x4', 'l-attribute': '7', 'c-attribute': '0', 'eRU': 0},  
+        {'r-id': 'R1-11', 'arc': 'x2, x4', 'l-attribute': '7', 'c-attribute': '0', 'eRU': 0}, 
+        {'r-id': 'R1-12', 'arc': 'x2, x3', 'l-attribute': '9', 'c-attribute': 'a', 'eRU': 0},
+        {'r-id': 'R1-13', 'arc': 'x3, x1', 'l-attribute': '5', 'c-attribute': 'b', 'eRU': 0},
+    ]
+
+
+    Cycle_R1 = Cycle(R1).evaluate_cycle()

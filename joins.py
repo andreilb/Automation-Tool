@@ -72,7 +72,6 @@ class TestJoins:
         all_groups_same_c_attribute = True
         for group in target_vertex_groups:
             c_attributes = {arc['c-attribute'] for arc in R2 if arc['arc'] in group['join arcs']}
-            # print(f"Checking group {group['join-id']} with c-attributes: {c_attributes}")  # Debugging output
             if len(c_attributes) > 1:
                 all_groups_same_c_attribute = False
                 # print("Inconsistent c-attributes found in this group.")  # Debugging output
@@ -84,13 +83,13 @@ class TestJoins:
             # TestJoins.print_updated_data(R1)
             return R1  # Only use R1
         else:
-            # print("Some groups of arcs in R2 with the same target vertex have different c-attributes.")
+            # print("\nR2 contains other types of JOINs.\n")
             # print("Using data from both R1 and R2:")
             # TestJoins.print_updated_data(R1)
             # print("R2:")
             # TestJoins.print_updated_data(R2)  # Debugging output for R2
             return R1 + R2  # Use both R1 and R2
-
+    
     def print_updated_data(data):
         """
         Prints the updated data (arcs, vertices, c-attribute, l-attribute, and eRU) in a human-readable format.

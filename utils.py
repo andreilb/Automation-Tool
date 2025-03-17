@@ -155,6 +155,33 @@ def find_paths(R, source, target, visited=None):
                 paths.append([source] + path)
     return paths
 
+def find_path_from_graph(graph, start, end, path=[]):
+    """
+    Finds all paths from start to end in the given graph.
+
+    Parameters:
+        - graph (dict): A dictionary representing the graph, where keys are vertices and values are lists of adjacent vertices.
+        - start (str): The starting vertex for the path search.
+        - end (str): The target vertex for the path search.
+        - path (list, optional): The current path being explored. Defaults to [].
+
+    Returns:
+        list: A list of paths, each represented as a list of vertices from start to end.
+    """
+    path = path + [start]
+    if start == end:
+        return [path]
+    if start not in graph:
+        return []
+    paths = []
+    for node in graph[start]:
+        if node not in path:
+            # Recursively call find_path_from_graph (not find_paths)
+            new_paths = find_path_from_graph(graph, node, end, path)
+            for new_path in new_paths:
+                paths.append(new_path)
+    return paths
+
 def get_source_and_target_vertices(R):
     """
     Identifies the source and target vertices that result in the longest path or involve the most vertices.
@@ -206,8 +233,8 @@ def get_source_and_target_vertices(R):
     # Identify the endpoint of the longest path
     target_vertex = longest_path[-1] if longest_path else None
 
-    # print(f"Source Vertex: {source_vertex}")
-    # print(f"Target Vertex: {target_vertex}")
+    print(f"Source Vertex: {source_vertex}")
+    print(f"Target Vertex: {target_vertex}")
 
     return source_vertex, target_vertex
 
@@ -223,9 +250,9 @@ def get_r_id(arc, R):
         str or None: The r-id corresponding to the given arc, or None if not found.
     """
     # Search through R to find the r-id associated with the given arc
-    for entry in R:
-        if entry['arc'] == arc:
-            return entry['r-id']
+    for arc in R:
+        if arc['arc'] == arc:
+            return arc['r-id']
     return None  # Return None if the arc is not found
 
 def get_arc_from_rid(rid, R1):
@@ -243,3 +270,15 @@ def get_arc_from_rid(rid, R1):
         if r['r-id'] == rid:
             return r['arc']
     return None
+
+def build_graph(R):
+        """
+        Builds a directed graph from the list of arcs.
+        """
+        graph = {}
+        for arc in R:
+            start, end = arc['arc'].split(', ')
+            if start not in graph:
+                graph[start] = []
+            graph[start].append(end)
+        return graph

@@ -245,7 +245,6 @@ class RDLTProcessorGUI:
         
         # Process R2 (RBS) if centers exist
         if Centers_list:
-            # print('-' * 60)
             print("\nProcessing RBS components...\n")
             print('-' * 60)
             initial_R2 = input_instance.getRs()  # Get all regions except 'R1'
@@ -261,12 +260,9 @@ class RDLTProcessorGUI:
             
             if check_result == initial_R1:
                 # All joins are OR-joins, use the standard processing with abstract arcs
-                # print("\nAll JOINs in R2 are OR-JOINs. Using R1 ONLY.\n")
                 R2 = ProcessR2(initial_R2)
                 
                 # Process R1 with abstract arcs
-                # print("\nProcessing R1 components with abstract arcs...\n")
-                # print('-' * 60)
                 R1 = ProcessR1(
                     Arcs_list,
                     initial_R1,
@@ -286,22 +282,19 @@ class RDLTProcessorGUI:
                 cycle_list_R2 = cycle_R2.get_cycle_list()
                 
                 # Convert data from dict to matrix (R1 only)
-                # print(f"\nFor Matrix processing (R1 with abstract arcs): {len(R1)} arcs")
                 matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
                 
                 # Perform matrix evaluation to determine L-Safeness
                 l_safe, matrix = matrix_instance.evaluate()
-                print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 # print('-' * 60)
                 # print("Generated Matrix:\n")
-                # print("|  Arc  |   |x|   |y|  |l|  |c||eRU||cv| |op|  |cycle| |loop||out| |safe||join-safe| |r-id|")
-                # matrix_instance.print_matrix()
+                # matrix_instance.print_matrix() #print matrix
+                print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('-' * 60)
                 
             else:
                 # Not all joins are OR-joins, use direct processing without abstract arcs
-                # print("\nR2 contains other types of JOINs. Using both R1 and R2 for processing.\n")
-                
+        
                 # Extract and flatten R2 data
                 R2 = []
                 for r2_dict in initial_R2:
@@ -340,20 +333,17 @@ class RDLTProcessorGUI:
                 
                 
                 # Convert data from dict to matrix (combined R1 and R2)
-                # print(f"\nFor Matrix processing (combined R1 and R2): {len(combined_R)} arcs") 
-                matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List)
+                matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List, In_list, Out_list)
                 
                 # Perform matrix evaluation to determine L-Safeness
                 l_safe, matrix = matrix_instance.evaluate()
-                print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 # print('-' * 60)
                 # print("Generated Matrix:\n")
-                # print("|  Arc  |   |x|   |y|  |l|  |c||eRU||cv| |op|  |cycle| |loop||out| |safe||join-safe| |r-id|")
                 # matrix_instance.print_matrix()
+                print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('-' * 60)
         else:
             # No centers found, process R1 directly
-            # print('-' * 60)
             print("\nNo centers found. Processing R1 directly...\n")
             print('-' * 60)
             
@@ -368,16 +358,14 @@ class RDLTProcessorGUI:
             cycle_list_R1 = cycle_R1.get_cycle_list()
             
             # Convert data from dict to matrix
-            # print(f"\nFor Matrix processing (R1 only): {len(R1)} arcs") 
             matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
             
             # Perform matrix evaluation to determine L-Safeness
             l_safe, matrix = matrix_instance.evaluate()
-            print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
-            print('-' * 60)
+            # print('-' * 60)
             # print("Generated Matrix:\n")
-            # print("|  Arc  |   |x|   |y|  |l|  |c||eRU||cv| |op|  |cycle| |loop||out| |safe||join-safe| |r-id|")
-            # matrix_instance.print_matrix()
+            matrix_instance.print_matrix()
+            print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
             # print('-' * 60)
         
         # Print final verification result
@@ -387,10 +375,6 @@ class RDLTProcessorGUI:
         else:
             violations = matrix_instance.get_violations()
             print('-' * 60)
-            # print("\nVEFIRICATION: NEEDS FURTHER VERIFICATION.\n")
-            
-            # print(violations) # dictionary format of violations
-            # print('-' * 30)
 
             # Initialize Contraction Path
             contraction_path = ContractionPath(combined_R if 'combined_R' in locals() else R1, violations)
@@ -400,7 +384,6 @@ class RDLTProcessorGUI:
             path, failed_contractions = contraction_path.get_contractions_with_rid()
             list_path, list_failed = contraction_path.get_list_contraction_arcs()
             # Print the final contraction paths
-            # print("\nGenerating contraction path...")
             print(f"\nContraction path: {list_path}\n")
             # print(f"Failed contractions: {list_failed}\n")
 
@@ -410,6 +393,7 @@ class RDLTProcessorGUI:
                 if Centers_list:
                     modified_activity = ModifiedActivityExtraction(combined_R, path, violations, failed_contractions, cycle_combined.Cycle_List, R2, In_list, Out_list)
                     activity_profile= modified_activity.analyze_model()
+
                 else:
                     modified_activity = ModifiedActivityExtraction(combined_R, path, violations, failed_contractions, cycle_combined.Cycle_List)
                     activity_profile, violations = modified_activity.analyze_model()
@@ -418,7 +402,6 @@ class RDLTProcessorGUI:
             else:
                 # Run Modified Activity Extraction without in_list and out_list
                 modified_activity = ModifiedActivityExtraction(R1, path, violations, failed_contractions, cycle_R1.Cycle_List)
-                # Analyze the model
                 activity_profile = modified_activity.analyze_model()
 
 

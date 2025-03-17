@@ -182,7 +182,7 @@ class Input_RDLT:
 
         self.user_input_to_evsa = [final_transform_R(rdlt) for rdlt in rdlts]
 
-        # Print final results for debugging
+        # Print final results for debugging (dictionary)
         # print("Extracted RDLT Data (dict):")
         # print('-' * 30)
         # for rdlt in self.user_input_to_evsa:

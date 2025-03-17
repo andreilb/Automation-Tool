@@ -33,10 +33,11 @@ from contraction import ContractionPath
 if __name__ == '__main__':
     
     # Input file path for RDLT data
-    input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_rdlt.txt'
+    # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_rdlt.txt'
     # Uncomment to use alternative test files:
     # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_lsafe.txt'
-    # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_multiple_center.txt'
+    input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_multiple_center.txt'
+    # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_two_center.txt'
     # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_stuckrdlt.txt'
     # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_relaxedwith multipleca.txt'
     # input_filepath = 'D:/SCHOOL/Software/rdlt_text/sample_rdlt_andjoin.txt'
@@ -160,7 +161,7 @@ if __name__ == '__main__':
             
             # Convert data from dict to matrix (combined R1 and R2)
             # print(f"\nFor Matrix processing (combined R1 and R2): {len(combined_R)} arcs") 
-            matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List)
+            matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List, In_list, Out_list)
             
             # Perform matrix evaluation to determine L-Safeness
             l_safe, matrix = matrix_instance.evaluate()

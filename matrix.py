@@ -30,7 +30,7 @@ class Matrix:
             - safe_vector: Matrix used for safeness verification.
             - join_safe_vector: Matrix used for JOIN-safeness verification.
         """
-    def __init__(self, R, Cycle_List):
+    def __init__(self, R, Cycle_List, In_List=None, Out_List=None):
         """
         Initialize the Matrix class with the RDLT data and a list of cycles.
 
@@ -40,6 +40,8 @@ class Matrix:
         """
         self._R_ = R
         self.Cycle_List = Cycle_List
+        self.In_List = In_List
+        self.Out_List = Out_List
         self.rdlt_structure = None
         self.matrix_operations = None
         self.join_safe_violations = []
@@ -59,7 +61,7 @@ class Matrix:
         self._R_vertices = utils.extract_vertices(self.Arcs_list)
         # print(f"Extracted Vertices: {self._R_vertices}")  # Debug: Show vertices
 
-        # self.source_vertices, self.target_vertices = utils.get_source_and_target_vertices(self._R_)
+        self.source_vertices, self.target_vertices = utils.get_source_and_target_vertices(self._R_)
 
         # Extract arcs and critical arcs from the cycle list
         arcs_in_cycle_list = [Cycles['cycle'] for Cycles in self.Cycle_List]  # Fixed
@@ -316,8 +318,9 @@ class Matrix:
         1. Identifying all splits and joins in the graph
         2. Finding paths from splits to joins
         3. Checking various conditions based on join types (AND-JOIN, OR-JOIN, MIX-JOIN)
-        4. Using matrix values for loop-safe and critical arc safeness checks
-        5. Updating the join_vector with values (-1 for unsafe)
+        4. Ensuring that joins only occur between type-alike arcs (both bridges or both non-bridges)
+        5. Using matrix values for loop-safe and critical arc safeness checks
+        6. Updating the join_vector with values (-1 for unsafe)
         
         Returns:
             bool: True if the structure is JOIN-safe, False otherwise
@@ -353,39 +356,54 @@ class Matrix:
             if dst not in vertex_incoming:
                 vertex_incoming[dst] = []
             vertex_incoming[dst].append(src)
-        
-        # Find source and sink vertices
-        sources = set(v for v in self._R_vertices if not vertex_incoming.get(v, []))
-        sinks = set(v for v in self._R_vertices if not vertex_outgoing.get(v, []))
 
         # Create tracking set for arcs involved in split/join paths
         involved_arcs = set()
-        # Dictionary to store unique violations by composite key (arc|r-id)
+        # Dictionary to store unique violations by composite key
         unique_violations = {}
         
         # Identify joins and splits, properly excluding source/sink vertices
         joins = []
         for v, incoming in vertex_incoming.items():
-            if len(incoming) > 1 and v not in sources:
-                # Additional check: vertex should not be the first vertex in any arc
-                if not any(r['arc'].split(', ')[0] == v for r in self._R_):
-                    joins.append(v)
+            if len(incoming) > 1 and v not in self.source_vertices:
+                joins.append(v)
         
         splits = [v for v, outgoing in vertex_outgoing.items() 
-                if len(outgoing) > 1 and v not in sinks]
+                if len(outgoing) > 1 and v not in self.target_vertices]
         
         logged_violations = set()
+        
+        # Helper function to check if an arc is a bridge
+        def is_bridge(arc):
+            """Check if an arc is a bridge (in In_List or Out_List)"""
+            if self.In_List and arc in self.In_List:
+                return True, "in-bridge"
+            elif self.Out_List and arc in self.Out_List:
+                return True, "out-bridge"
+            return False, "non-bridge"
         
         def mark_arc_unsafe(arc, violation_type, details=None):
             """Mark an arc as unsafe and record the violation"""
             if arc in arc_safety:
-                # Create violation record with all required keys
-                r_id = arc_attributes[arc][2] if arc in arc_attributes else None
-                # Create a composite key for deduplication based on arc and r-id
-                composite_key = f"{arc}|{r_id}|{violation_type}"  # Added violation_type to make key more specific
+                # Extract source and target vertices from the arc
+                src, dst = arc.split(', ')
                 
-                # Only add if this unique arc+r-id+violation hasn't been seen before
+                # Skip source-originating arcs in join violations
+                if violation_type.startswith("JOIN") and src in self.source_vertices:
+                    return False
+                    
+                # Skip sink-terminating arcs in split violations
+                if violation_type.startswith("Split") and dst in self.target_vertices:
+                    return False
+                
+                # Create a better composite key for deduplication
+                r_id = arc_attributes[arc][2] if arc in arc_attributes else None
+                composite_key = f"{arc}|{r_id}"
+                
+                # Only add if this unique violation hasn't been seen before
                 if composite_key not in unique_violations:
+                    unique_violations[composite_key] = True
+                    
                     violation = {
                         "violation": violation_type,
                         "problematic_arc": arc,
@@ -398,92 +416,181 @@ class Matrix:
                     # Add any additional details
                     if details:
                         for key, value in details.items():
-                            if key not in violation:  # Only add keys that don't already exist
+                            if key not in violation:
                                 violation[key] = value
-                    unique_violations[composite_key] = violation
+                    
                     involved_arcs.add(arc)
-                    # Only append to join_safe_violations if it's not already there
-                    if not any(v.get('arc') == arc and v.get('r-id') == r_id and v.get('violation') == violation_type 
-                        for v in self.join_safe_violations):
-                        self.join_safe_violations.append(violation)
+                    self.join_safe_violations.append(violation)
                     return True
             return False
         
         def find_all_paths(start, end, max_depth=100):
-            """Find all paths from start to end vertex using DFS with cycle detection"""
+            """Find all paths from start to end vertex using DFS with proper cycle detection"""
             all_paths = []
-            def dfs(current, path, depth):
-                if depth > max_depth:
-                    return
+            
+            def dfs(current, path, visited):
+                # Base case: reached destination
                 if current == end:
                     all_paths.append(path[:])
                     return
+                    
+                # Mark current vertex as visited
+                visited.add(current)
+                
+                # Explore neighbors
                 if current in vertex_outgoing:
                     for next_vertex in vertex_outgoing[current]:
-                        if next_vertex not in path:  # Avoid cycles
-                            dfs(next_vertex, path + [next_vertex], depth + 1)
-            dfs(start, [start], 0)
+                        # Skip if already visited to avoid cycles
+                        if next_vertex not in visited:
+                            # If this is the end vertex, or it's not already in the path
+                            if next_vertex == end or next_vertex not in path:
+                                # Continue DFS
+                                dfs(next_vertex, path + [next_vertex], visited.copy())
+            
+            # Start DFS from start vertex
+            dfs(start, [start], set())
             return all_paths
-
-        # FIXED: Improved method to identify valid incoming arcs for each join
-        def validate_join_inputs(join_vertex):
-            """Check all incoming arcs to ensure they're part of valid paths from splits"""
-            # Find all splits that can reach this join
-            reachable_splits = set()
-            # Dictionary to track all valid paths from each vertex to the join
-            valid_paths_to_join = {v: False for v in self._R_vertices}
-            
-            # Mark the join vertex itself as valid
-            valid_paths_to_join[join_vertex] = True
-            
-            # For each split, find all paths to the join and mark all vertices in these paths as valid
-            for split in splits:
-                paths = find_all_paths(split, join_vertex)
-                if paths:
-                    reachable_splits.add(split)
-                    # Mark all vertices in paths as having valid paths to join
-                    for path in paths:
-                        for vertex in path:
-                            valid_paths_to_join[vertex] = True
-            
-            # If no paths from any split to this join, it's not a real join in our context
-            if not reachable_splits:
-                return True
+        
+        def check_type_alike_arcs(join_vertex):
+            """Check if all incoming arcs to a join are type-alike (all bridges or all non-bridges)"""
+            if join_vertex in vertex_incoming:
+                incoming_arcs = []
+                for source in vertex_incoming[join_vertex]:
+                    incoming_arcs.append(f"{source}, {join_vertex}")
                 
-            # Check all actual incoming arcs to the join for validity
+                # Skip if there's only one incoming arc
+                if len(incoming_arcs) <= 1:
+                    return True
+                
+                # Check if arcs are bridges or non-bridges
+                in_bridges = []
+                out_bridges = []
+                non_bridges = []
+                
+                for arc in incoming_arcs:
+                    is_bridge_arc, bridge_type = is_bridge(arc)
+                    if is_bridge_arc:
+                        if bridge_type == "in-bridge":
+                            in_bridges.append(arc)
+                        else:  # out-bridge
+                            out_bridges.append(arc)
+                    else:
+                        non_bridges.append(arc)
+                
+                # In-bridges can join with anything
+                # But out-bridges and non-bridges cannot mix
+                if out_bridges and non_bridges:
+                    # Violation: mixed out-bridge and non-bridge arcs
+                    violation = f"Type-alike violation: Join has mixed out-bridge and non-bridge arcs"
+                    for arc in out_bridges + non_bridges:
+                        mark_arc_unsafe(arc, violation, {
+                            'join_vertex': join_vertex,
+                            'arc_type': "mixed",
+                            'violation_type': 'type_alike_violation'
+                        })
+                    return False
+                
+                return True
+            return True  # No incoming arcs, so no violation
+
+        def validate_join_inputs(join_vertex):
+            """Check all incoming arcs to ensure they're part of valid paths from splits or source vertices"""
+            # First, check if all incoming arcs are type-alike
+            if not check_type_alike_arcs(join_vertex):
+                return False
+                
+            # First, find all vertices that can reach this join through a valid path from a split or source
+            valid_source_vertices = set(self.source_vertices)
+            
+            # Add all splits that can reach this join
+            for split in splits:
+                if find_all_paths(split, join_vertex):
+                    valid_source_vertices.add(split)
+            
+            # Track vertices that have a valid path to the join
+            valid_path_vertices = set()
+            
+            # Process each valid source vertex
+            for source in valid_source_vertices:
+                # Find all paths from this source to the join
+                paths = find_all_paths(source, join_vertex)
+                
+                # Add all vertices from these paths to valid_path_vertices
+                for path in paths:
+                    valid_path_vertices.update(path)
+            
+            # Now check all incoming arcs to the join
             has_violations = False
             for source in vertex_incoming.get(join_vertex, []):
-                arc = f"{source}, {join_vertex}"
-                
-                # Skip the check if source is a valid split itself (direct split to join)
-                if source in reachable_splits:
+                # Skip source vertices
+                if source in self.source_vertices:
                     continue
                     
-                # If the source vertex is not marked as having a valid path to the join,
-                # this is an interruption
-                if not valid_paths_to_join[source]:
-                    violation = f"Process interruption: Invalid incoming arc {arc} to join {join_vertex}"
+                # If the source vertex is not in our valid_path_vertices, it's a violation
+                if source not in valid_path_vertices:
+                    arc = f"{source}, {join_vertex}"
+                    violation = f"Process interruption: Incoming arc {arc} to join {join_vertex} is not from a valid path"
+                    
                     if mark_arc_unsafe(arc, violation, {
                         'join_vertex': join_vertex,
-                        'external_source': source,
-                        'valid_sources': [v for v, valid in valid_paths_to_join.items() if valid]
+                        'invalid_source': source,
+                        'violation_type': 'join_input_violation'
                     }):
                         has_violations = True
             
             return not has_violations
-        
-        # Check all joins for process interruptions (using our fixed validation function)
-        for join in joins:
-            if not validate_join_inputs(join):
-                join_safe = False
-        
-        # Remaining checks (split origin, no branching, etc.)
+
+        def validate_split_join_completeness(split, join):
+            """
+            Verify that all outgoing paths from the split either reach the join or a valid sink.
+            This function detects outgoing arcs from splits that don't lead to joins.
+            """
+            # Get all outgoing vertices from the split
+            if split not in vertex_outgoing:
+                return True  # No outgoing vertices, nothing to check
+            elif split == join:
+                return True
+            elif not paths:
+                return True 
+            
+            outgoing_vertices = vertex_outgoing[split]
+            
+            # Find all paths from the split to the join
+            paths_to_join = find_all_paths(split, join)
+            
+            # Get all vertices that are part of a path to the join
+            vertices_in_paths_to_join = set()
+            for path in paths_to_join:
+                vertices_in_paths_to_join.update(path)
+            
+            # For each outgoing vertex from the split
+            violations_found = False
+            for outgoing in outgoing_vertices:
+                # Skip if this outgoing vertex is a sink
+                if outgoing in self.target_vertices:
+                    continue
+                
+                # Check if this outgoing vertex is part of any path to the join
+                if outgoing not in vertices_in_paths_to_join:
+                    # This is a violation - outgoing arc from split doesn't lead to join
+                    arc = f"{split}, {outgoing}"
+                    violation = f"Split violation: Outgoing arc {arc} from split {split} doesn't lead to join {join}"
+                    
+                    if mark_arc_unsafe(arc, violation, {
+                        'split_origin': split,
+                        'join_vertex': join,
+                        'violation_type': 'split_completeness_violation'
+                    }):
+                        violations_found = True
+            
+            return not violations_found
+
         def check_one_split_origin(paths, split, join):
             """Check that paths only intersect at endpoints"""
             for i, path1 in enumerate(paths):
-                path1_interior = set(path1[1:-1])
+                path1_interior = set(path1[1:-1])  # Exclude start and end vertices
                 for j, path2 in enumerate(paths[i+1:], i+1):
-                    path2_interior = set(path2[1:-1])
+                    path2_interior = set(path2[1:-1])  # Exclude start and end vertices
                     intersection = path1_interior & path2_interior
                     
                     if intersection:
@@ -497,6 +604,11 @@ class Matrix:
                                 related_arcs.extend(f"{vertex}, {succ}" for succ in vertex_outgoing[vertex])
                                 
                             for arc in related_arcs:
+                                src, dst = arc.split(', ')
+                                # Skip if source is in source_vertices or target is in target_vertices
+                                if src in self.source_vertices or dst in self.target_vertices:
+                                    continue
+                                    
                                 violation_key = f"intersection:{arc}"
                                 
                                 if violation_key not in logged_violations:
@@ -504,9 +616,8 @@ class Matrix:
                                     mark_arc_unsafe(arc, violation, {
                                         'join_vertex': join,
                                         'split_origin': split,
-                                        'path1': path1,
-                                        'path2': path2,
-                                        'intersection_vertex': vertex
+                                        'intersection_vertex': vertex,
+                                        'violation_type': 'one_split_origin_violation'
                                     })
                                     return False
             return True
@@ -517,6 +628,10 @@ class Matrix:
                 if vertex in vertex_outgoing:
                     for next_vertex in vertex_outgoing[vertex]:
                         if next_vertex != join and next_vertex not in path:
+                            # Skip if next_vertex is a sink
+                            if next_vertex in self.target_vertices:
+                                continue
+                                
                             violation = f"Unrelated process: vertex {vertex} connects to external vertex {next_vertex}"
                             arc = f"{vertex}, {next_vertex}"
                             
@@ -525,7 +640,8 @@ class Matrix:
                                 logged_violations.add(violation_key)
                                 mark_arc_unsafe(arc, violation, {
                                     'join_vertex': join,
-                                    'split_origin': split
+                                    'split_origin': split,
+                                    'violation_type': 'unrelated_process_violation'
                                 })
                                 return False
             return True
@@ -542,6 +658,10 @@ class Matrix:
                             break
                     
                     for next_vertex in outgoing:
+                        # Skip if next_vertex is a sink
+                        if next_vertex in self.target_vertices:
+                            continue
+                            
                         if next_vertex != next_vertex_in_path and next_vertex not in path:
                             violation = f"Unauthorized branching: vertex {vertex} branches to {next_vertex}"
                             arc = f"{vertex}, {next_vertex}"
@@ -551,15 +671,42 @@ class Matrix:
                                 logged_violations.add(violation_key)
                                 mark_arc_unsafe(arc, violation, {
                                     'join_vertex': join,
-                                    'split_origin': split
+                                    'split_origin': split,
+                                    'path': path,
+                                    'violation_type': 'no_branching_violation'
+                                })
+                                return False
+            return True
+
+        def check_process_interruptions(split, join, path):
+            """Check for process interruptions (incoming arcs from outside the path)"""
+            for vertex in path[1:-1]:  # Exclude split and join vertices
+                if vertex in vertex_incoming:
+                    for pred_vertex in vertex_incoming[vertex]:
+                        # Skip if pred_vertex is a source
+                        if pred_vertex in self.source_vertices:
+                            continue
+                            
+                        if pred_vertex not in path:
+                            violation = f"Process interruption: vertex {vertex} has incoming arc from external vertex {pred_vertex}"
+                            arc = f"{pred_vertex}, {vertex}"
+                            
+                            violation_key = f"interruption:{arc}"
+                            if violation_key not in logged_violations:
+                                logged_violations.add(violation_key)
+                                mark_arc_unsafe(arc, violation, {
+                                    'join_vertex': join,
+                                    'split_origin': split,
+                                    'path': path,
+                                    'violation_type': 'process_interruption_violation'
                                 })
                                 return False
             return True
 
         def determine_join_type(incoming_arcs):
             """Determine join type based on conditions of incoming arcs"""
-            conditions = [get_arc_condition(arc) for arc in incoming_arcs if arc in arc_attributes]
-            has_epsilon = any(c == 'ε' or c == '0' for c in conditions)
+            conditions = [arc_attributes.get(arc, (None, None, None))[0] for arc in incoming_arcs]
+            has_epsilon = any(c == 'ε' or c == '0' for c in conditions if c is not None)
             has_non_epsilon = any(c != 'ε' and c != '0' and c is not None for c in conditions)
             unique_conditions = set(conditions)
             
@@ -705,44 +852,36 @@ class Matrix:
         # Now do the remaining split-to-join path checks
         for split in splits:
             for join in joins:
-                if split == join:
-                    continue
-                    
+                # First check if there's at least one path from split to join
                 paths = find_all_paths(split, join)
-                if not paths:
-                    continue
-                
-                # Get incoming arcs to join
-                incoming_arcs = []
-                for pred in vertex_incoming.get(join, []):
-                    incoming_arcs.append(f"{pred}, {join}")
-                    
-                # Check One Split Origin
-                if not check_one_split_origin(paths, split, join):
-                    join_safe = False
-                    continue
-
-                # Check Duplicate Conditions
-                if not check_duplicate_conditions(paths, join, incoming_arcs):
-                    join_safe = False
-                    continue
-                
-                # Check L-values and safety
-                if not check_equal_l_values_and_safety(paths, join, incoming_arcs):
-                    join_safe = False
-                    continue
-                
-                # Check each path for all requirements
-                for path in paths:
-                    # Check No Unrelated Processes
-                    if not check_unrelated_processes(split, join, path):
+                if paths:
+                    # Validate that all outgoing arcs from split reach the join
+                    if not validate_split_join_completeness(split, join):
                         join_safe = False
                         continue
-                    
-                    # Check No Branching
-                    if not check_no_branching(split, join, path):
+                        
+                    # Continue with existing checks
+                    if not check_one_split_origin(paths, split, join):
                         join_safe = False
-                        continue
+                        
+                    # Check path requirements
+                    for path in paths:
+                        if not check_unrelated_processes(split, join, path):
+                            join_safe = False
+                        if not check_no_branching(split, join, path):
+                            join_safe = False
+                        if not check_process_interruptions(split, join, path):
+                            join_safe = False
+                            
+                    # Get incoming arcs to join
+                    incoming_arcs = [f"{src}, {join}" for src in vertex_incoming.get(join, [])]
+                    if not check_duplicate_conditions(paths, join, incoming_arcs):
+                        join_safe = False
+                        
+                    # Check L-values and safety
+                    if not check_equal_l_values_and_safety(paths, join, incoming_arcs):
+                        join_safe = False
+                # No else clause needed here since we only check if paths exist
 
         # After processing all splits and joins, update the join_safe value in the rdlt_structure
         for i, r in enumerate(self.rdlt_structure):
@@ -908,39 +1047,42 @@ class Matrix:
         self.matrix_operations = matrix
         return self.l_safe_vector, matrix
 
-    # Fix for get_violations method
     def get_violations(self):
         """
         Retrieves and formats the violations found during the L-safeness checks.
-        This method processes violations in JOIN-safeness, loop-safeness, 
-        and safeness of critical arcs.
-
-        Returns:
-            list: A list of violation details, including type, source, target, 
-                problematic arcs, and violating values.
         """
+        # Clear existing violations list
+        self.violations = []
+        seen_violations = set()
+        
         # Process JOIN-Safeness Violations
         if self.join_safe_violations:
             for violation in self.join_safe_violations:
-                violation_details = {
-                    "type": "JOIN-Safeness",
-                    "split_origin": violation.get("split_origin", "Unknown"),
-                    "join_vertex": violation.get("join_vertex", "Unknown"),
-                    "problematic_arc": violation.get("problematic_arc", violation.get("arc", "Unknown")),
-                    "r-id": violation.get("r-id", "Unknown"),
-                    "arc": violation.get("arc", "Unknown"),
-                    "violation": violation.get("violation", "JOIN-Safeness")
-                }
-                self.violations.append(violation_details)
+                # Create a composite key for deduplication
+                composite_key = f"{violation.get('arc')}|{violation.get('r-id')}"
                 
-                # Print each violation component separately for debugging
-                print(f"JOIN-Safeness Violation:")
-                print(f"  Type: {violation_details['type']}")
-                print(f"  r-id: {violation_details['r-id']}")
-                print(f"  arc: {violation_details['arc']}")
-                print(f"  Split Origin: {violation_details['split_origin']}")
-                print(f"  Join Vertex: {violation_details['join_vertex']}")
-                print(f"  Problematic Arc: {violation_details['problematic_arc']}")
+                if composite_key not in seen_violations:
+                    seen_violations.add(composite_key)
+                    
+                    violation_details = {
+                        "type": "JOIN-Safeness",
+                        "split_origin": violation.get("split_origin", "Unknown"),
+                        "join_vertex": violation.get("join_vertex", "Unknown"),
+                        "problematic_arc": violation.get("problematic_arc", violation.get("arc", "Unknown")),
+                        "r-id": violation.get("r-id", "Unknown"),
+                        "arc": violation.get("arc", "Unknown"),
+                        "violation": violation.get("violation", "JOIN-Safeness")
+                    }
+                    self.violations.append(violation_details)
+                    
+                    # Print each violation component separately for debugging
+                    print(f"\nJOIN-Safeness Violation:")
+                    print(f"  Type: {violation_details['type']}")
+                    print(f"  r-id: {violation_details['r-id']}")
+                    print(f"  arc: {violation_details['arc']}")
+                    print(f"  Split Origin: {violation_details['split_origin']}")
+                    print(f"  Join Vertex: {violation_details['join_vertex']}")
+                    print(f"  Problematic Arc: {violation_details['problematic_arc']}")
 
         # Process Loop-Safeness Violations
         if self.loop_safe_violations:

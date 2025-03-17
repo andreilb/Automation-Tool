@@ -233,8 +233,8 @@ def get_source_and_target_vertices(R):
     # Identify the endpoint of the longest path
     target_vertex = longest_path[-1] if longest_path else None
 
-    print(f"Source Vertex: {source_vertex}")
-    print(f"Target Vertex: {target_vertex}")
+    # print(f"Source Vertex: {source_vertex}")
+    # print(f"Target Vertex: {target_vertex}")
 
     return source_vertex, target_vertex
 

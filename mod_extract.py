@@ -842,7 +842,7 @@ class ModifiedActivityExtraction:
             
             print(f"  - {arc}:")
             print(f"    Traversed in {traversed_in} activities")
-            print(f"    Checked but not traversed in {checked_not_traversed} activities")
+            # print(f"    Checked but not traversed in {checked_not_traversed} activities")
             print(f"    Unreached in {unreached} activities")
             print(f"    Violation Type: {arc_type}")
 
@@ -912,7 +912,7 @@ class ModifiedActivityExtraction:
                 print(f"\n  - {arc}:")
                 # print(f"    Violation Type: {arc_type}")
                 print(f"    Traversed in {traversed_in} paths")
-                print(f"    Checked but not traversed in {checked_not_traversed} paths")
+                # print(f"    Checked but not traversed in {checked_not_traversed} paths")
                 print(f"    Unreached in {unreached} paths")
                 
                 # Check if this arc also violated classical soundness
@@ -1000,7 +1000,7 @@ class ModifiedActivityExtraction:
             print(f"  Node {node}: {count} deadlocks")
         
         # Analyze potential outgoing arcs from deadlock nodes
-        print("\nPotential outgoing arcs from deadlock nodes that were checked but not traversed:")
+        # print("\nPotential outgoing arcs from deadlock nodes that were checked but not traversed:")
         
         for node in deadlock_points:
             print(f"\nFrom deadlock node: {node}")
@@ -1030,7 +1030,7 @@ class ModifiedActivityExtraction:
                 not_traversed_count = len(checked_profiles) - traversed_count
                 
                 print(f"    Traversed in {traversed_count} activities with deadlock")
-                print(f"    Checked but not traversed in {not_traversed_count} activities with deadlock")
+                # print(f"    Checked but not traversed in {not_traversed_count} activities with deadlock")
                 
                 # For paths where the arc was checked but not traversed, analyze why
                 if not_traversed_count > 0:

@@ -288,7 +288,7 @@ class RDLTProcessorGUI:
                 l_safe, matrix = matrix_instance.evaluate()
                 # print('-' * 60)
                 # print("Generated Matrix:\n")
-                # matrix_instance.print_matrix() #print matrix
+                matrix_instance.print_matrix() #print matrix
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('-' * 60)
                 
@@ -339,7 +339,7 @@ class RDLTProcessorGUI:
                 l_safe, matrix = matrix_instance.evaluate()
                 # print('-' * 60)
                 # print("Generated Matrix:\n")
-                # matrix_instance.print_matrix()
+                matrix_instance.print_matrix()
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('-' * 60)
         else:

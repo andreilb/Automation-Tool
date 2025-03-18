@@ -821,7 +821,7 @@ class ModifiedActivityExtraction:
             for arc in p['violating_arcs_status'].keys():
                 all_violating.add(arc)
         
-        print(f"Total Violating Arcs: {len(all_violating)}")
+        # print(f"Total Violating Arcs: {len(all_violating)}")
         for arc in all_violating:
             traversed_in = sum(1 for p in non_empty_profiles 
                             if arc in p['violating_arcs_status'] 
@@ -842,11 +842,11 @@ class ModifiedActivityExtraction:
                     arc_type = p['violating_arcs_status'][arc].get('type', 'Unknown')
                     break
             
-            print(f"  - {arc}:")
-            print(f"    Traversed in {traversed_in} activities")
-            # print(f"    Checked but not traversed in {checked_not_traversed} activities")
-            print(f"    Unreached in {unreached} activities")
-            print(f"    Violation Type: {arc_type}")
+            # print(f"  - {arc}:")
+            # print(f"    Traversed in {traversed_in} activities")
+            # # print(f"    Checked but not traversed in {checked_not_traversed} activities")
+            # print(f"    Unreached in {unreached} activities")
+            # print(f"    Violation Type: {arc_type}")
 
     def print_violations_report(self):
         """

@@ -31,10 +31,19 @@ class SplashScreen:
         # Add loading text
         self.loading_label = tk.Label(frame, text="Loading application...", font=("Arial", 12), bg="#7393B3", fg="white")
         self.loading_label.pack(pady=10)
+
+        style = ttk.Style()
+        style.theme_use('default')  # Use the default theme as a base
+        style.configure("Custom.Horizontal.TProgressbar", 
+                        troughcolor='lightgray',  # Background color of the progress bar
+                        background='lightgreen',         # Color of the progress bar
+                        thickness=10)             # Thickness of the progress bar
         
         # Add progress bar
-        self.progress = ttk.Progressbar(frame, orient="horizontal", length=400, mode="indeterminate")
+        self.progress = ttk.Progressbar(frame, orient="horizontal", length=300, mode="determinate", style="Custom.Horizontal.TProgressbar")
         self.progress.pack(pady=10)
+
+        # Start the progress bar
         self.progress.start(10)
         
         # Add version info

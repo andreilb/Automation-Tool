@@ -106,8 +106,8 @@ class Input_RDLT:
         self.L_attribute_list = [i['l-attribute'] for i in R_list]
 
         # Print the extracted data for debugging
-        print('-' * 60)
-        print(f"Input RDLT: ")
+        # print('-' * 60)
+        print(f"\nInput RDLT: ")
         print('-' * 20)
         print(f"Arcs List ({len(self.Arcs_List)}): ", self.Arcs_List)
         print(f"Vertices List ({len(self.Vertices_List)}): ", self.Vertices_List)
@@ -120,7 +120,7 @@ class Input_RDLT:
             print(f"Centers ({len(self.Centers_list)}): ", self.Centers_list)
             print(f"In ({len(self.In_list)}): ", self.In_list)
             print(f"Out ({len(self.Out_list)}): ", self.Out_list)
-        print('-' * 60)
+        print('=' * 60)
 
         # Process the RDLT structure for R2, R3, etc., based on centers and arcs
         rdlts_raw = [{f"R{i + 2}-{self.Centers_list[i]}": []} for i in range(len(self.Centers_list))]

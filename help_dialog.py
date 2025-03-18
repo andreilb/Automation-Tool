@@ -37,17 +37,17 @@ class HelpDialog:
         
         overview_text = scrolledtext.ScrolledText(overview_frame, wrap=tk.WORD, height=20)
         overview_text.pack(fill=tk.BOTH, expand=True)
-        overview_text.insert(tk.END, """RDLT Processor - Robustness Diagram with Loop and Time Controls
+        overview_text.insert(tk.END, """RDLT Processor
 
-This application automates the evaluation of an RDLT to determine its L-Safeness and Classical Soundness by:
+This application automates the evaluation of an RDLT to determine its Classical Soundness by:
 
 • Extracting RDLT data from input files (text format)
-• Processing R2 (Reset-Bound Subsystem) if centers are present
-• Handling R1 (main structure with R2 represented as abstract arcs)
-• Evaluating cycles in both R1 and R2
+• Genertaing an Expanded Vertex Simplification (if RBS exists)
 • Checking for OR-JOIN conditions within the RBS
 • Running matrix operations to verify L-Safeness
+• Identifying arcs violating L-Safeness                        
 • Extracting activity profiles in case of violations
+• Generating Verification of Classical Soundness Results
 
 The application provides a simple GUI to select input files, process them, and view the results.
 """)
@@ -79,7 +79,17 @@ The application provides a simple GUI to select input files, process them, and v
    • Click "Clear Output" to clear the output text area
 
 File Format Requirements:
-The input text file should follow the specific RDLT format. For examples, see the sample files provided.
+The input text file should follow the specific RDLT format:
+                          
+(vertex 1), (vertex 2), (c-attribute), (l-attribute)
+CENTER
+(vertex 1), (vertex 2)
+IN
+(vertex 1), (vertex 2)
+OUT
+(vertex 1), (vertex 2)
+                                                                              
+For examples, see the sample files provided.
 """)
         usage_text.config(state=tk.DISABLED)
         
@@ -92,7 +102,7 @@ The input text file should follow the specific RDLT format. For examples, see th
         
         sample_text = scrolledtext.ScrolledText(sample_frame, wrap=tk.WORD, height=20)
         sample_text.pack(fill=tk.BOTH, expand=True)
-        sample_text.insert(tk.END, """The application comes with several sample files demonstrating different RDLT structures:
+        sample_text.insert(tk.END, """The application comes with several sample files demonstrating different test cases:
 
 • sample_rdlt.txt - Basic RDLT example
 • sample_lsafe.txt - Example of an L-Safe RDLT
@@ -124,7 +134,7 @@ Version 3.0 (March 2025)
 
 Author: Andrei Luz B. Asoy
 
-This application is designed for processing and analyzing Robustness Diagrams with Loop and Time Controls (RDLT).
+This application is designed for processing and analyzing Robustness Diagrams with Loop and Time Controls (RDLT). Specifically, its Classical Soundness property.
 
 Dependencies:
 • input_rdlt: Handles RDLT input processing
@@ -136,8 +146,8 @@ Dependencies:
 • matrix: Matrix class to convert RDLT data (dict) to matrix representation
 • mod_extract: ModifiedActivityExtraction class generates the activity profile of violating component(s)
 • contraction: ContractionPath for path contraction analysis
-
-For questions or issues, please contact the developer.
+• utils: helper functions
+                          
 """)
         about_text.config(state=tk.DISABLED)
         

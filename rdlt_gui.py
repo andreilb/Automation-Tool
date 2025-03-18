@@ -179,7 +179,7 @@ class RDLTProcessorGUI:
             return
         
         self.output_text.delete(1.0, tk.END)
-        self.output_text.insert(tk.END, f"Processing file: {filepath}\n\n")
+        # self.output_text.insert(tk.END, f"Processing file: {filepath}\n\n")
         self.status_var.set("Processing...")
         self.root.update_idletasks()
         
@@ -246,7 +246,7 @@ class RDLTProcessorGUI:
         # Process R2 (RBS) if centers exist
         if Centers_list:
             print("\nProcessing RBS components...\n")
-            print('-' * 60)
+            print('=' * 60)
             initial_R2 = input_instance.getRs()  # Get all regions except 'R1'
             
             # Use TestJoins to check if all joins in R2 are OR-joins
@@ -283,14 +283,13 @@ class RDLTProcessorGUI:
                 
                 # Convert data from dict to matrix (R1 only)
                 matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
-                
                 # Perform matrix evaluation to determine L-Safeness
                 l_safe, matrix = matrix_instance.evaluate()
-                # print('-' * 60)
-                # print("Generated Matrix:\n")
-                matrix_instance.print_matrix() #print matrix
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
-                print('-' * 60)
+                print('=' * 60)
+                print("Generated Matrix:\n")
+                matrix_instance.print_matrix()
+                print('=' * 60)
                 
             else:
                 # Not all joins are OR-joins, use direct processing without abstract arcs
@@ -329,27 +328,26 @@ class RDLTProcessorGUI:
                 print(f"C-attribute List ({len(c_attribute_list_combined)}): {c_attribute_list_combined}")
                 print(f"L-attribute List ({len(l_attribute_list_combined)}): {l_attribute_list_combined}")
                 print(f"eRU List ({len(eRU_list_combined)}): {eRU_list_combined}")
-                print('-' * 60)
+                print('=' * 60)
                 
                 
                 # Convert data from dict to matrix (combined R1 and R2)
                 matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List, In_list, Out_list)
-                
                 # Perform matrix evaluation to determine L-Safeness
                 l_safe, matrix = matrix_instance.evaluate()
-                # print('-' * 60)
-                # print("Generated Matrix:\n")
-                matrix_instance.print_matrix()
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
-                print('-' * 60)
+                print('=' * 60)
+                print("Generated Matrix:\n")
+                matrix_instance.print_matrix()
+                print('=' * 60)
         else:
             # No centers found, process R1 directly
             print("\nNo centers found. Processing R1 directly...\n")
-            print('-' * 60)
+            print('=' * 60)
             
             # Process R1 with no abstract arcs
             print("\nProcessing R1 components...\n")
-            print('-' * 60)
+            print('=' * 60)
             R1 = initial_R1
             
             # Detect cycles in R1
@@ -359,14 +357,13 @@ class RDLTProcessorGUI:
             
             # Convert data from dict to matrix
             matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
-            
             # Perform matrix evaluation to determine L-Safeness
             l_safe, matrix = matrix_instance.evaluate()
-            # print('-' * 60)
-            # print("Generated Matrix:\n")
-            matrix_instance.print_matrix()
             print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
-            # print('-' * 60)
+            print('=' * 60)
+            print("Generated Matrix:\n")
+            matrix_instance.print_matrix()
+            print('=' * 60)
         
         # Print final verification result
         if l_safe == True:
@@ -374,7 +371,7 @@ class RDLTProcessorGUI:
             print("\n RDLT is L-safe and CLASSICAL SOUND.\n")
         else:
             violations = matrix_instance.get_violations()
-            print('-' * 60)
+            print('=' * 60)
 
             # Initialize Contraction Path
             contraction_path = ContractionPath(combined_R if 'combined_R' in locals() else R1, violations)

@@ -38,12 +38,12 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
         
         # If check returns R1 + R2, it means not all JOINs are OR-JOINs
         if check == R1 + R2:
-            print("\nNot all JOINs in R2 are OR-JOINs. Skipping abstract arc generation.\n")
-            print('-' * 30)
+            print("\nJOINs Evaluation: Not all JOINs in R2 are OR-JOINs. Skipping abstract arc generation.\n")
+            print('=' * 60)
         else:
             # All JOINs are OR-JOINs, proceed with abstract arc generation
-            print("\nAll JOINs in R2 are OR-JOINs. Generating abstract arcs...\n")
-            print('-' * 30)
+            print("\nJOINs Evaluation: All JOINs in R2 are OR-JOINs. Generating abstract arcs...\n")
+            print('=' * 60)
 
             # Initialize AbstractArc class and generate abstract arcs
             abstract = AbstractArc(R1, R2, In_list, Out_list, Centers_list, arcs_list)
@@ -181,13 +181,13 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
 
     # Print debugging results
     print("R1:")
-    print('-' * 30)
+    print('-' * 20)
     print(f"Arcs List ({len(arcs_list_R1)}): {arcs_list_R1}")
     print(f"Vertices List ({len(vertices_list_R1)}): {vertices_list_R1}")
     print(f"C-attribute List ({len(c_attribute_list_R1)}): {c_attribute_list_R1}")
     print(f"L-attribute List ({len(l_attribute_list_R1)}): {l_attribute_list_R1}")
     print(f"eRU List ({len(eRU_list)}): {eRU_list}")
     # print(f"CAs_list ({len(all_cycle_arcs_with_min_l)}): {all_cycle_arcs_with_min_l}")
-    print('-' * 60)
+    print('=' * 60)
 
     return R1

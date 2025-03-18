@@ -256,7 +256,6 @@ class ModifiedActivityExtraction:
                 tuple(sorted((node, attr) for node, attr in node_c_attributes.items()))
             )
         
-
             # Check if we've already visited this state
             if state_signature in visited_paths:
                 return
@@ -277,7 +276,38 @@ class ModifiedActivityExtraction:
                     'reason': 'Deadlock'
                 })
                 return
-            elif current_node == self.source and depth == 0:
+            
+            # If we've reached the sink, record this path
+            if current_node == self.sink:
+                self.activity_profiles.append({
+                    'path': path.copy(),
+                    'activity_profile': [step.copy() for step in activity_profile],
+                    'traversed_arcs': traversed_arcs.copy(),
+                    'violating_arcs_status': self.check_violating_arcs_status(traversed_arcs),
+                    'timesteps': timestep,
+                    'reached_sink': True
+                })
+                return
+                
+            # Only consider nodes that are reachable
+            if current_node not in self.reachable_nodes:
+                return
+            
+            # Get all outgoing arcs from the current node that are part of paths to sink
+            outgoing_arcs = []
+            for dest in self.graph.get(current_node, []):
+                arc = f"{current_node}, {dest}"
+                # Only consider valid arcs that lead to the sink
+                if arc in self.T and arc in self.valid_arcs and dest in paths_to_sink:
+                    # Skip arcs that have reached their l-attribute limit
+                    arc_count = traversed_arcs.get(arc, 0)
+                    if arc_count >= self.T[arc]["l-attribute"]:
+                        continue
+                    outgoing_arcs.append((arc, dest))
+            
+            # Special case: If we're at source with depth 0 and have no outgoing arcs,
+            # check if we should record a single arc from contraction path that leads to deadlock
+            if current_node == self.source and depth == 0 and not outgoing_arcs:
                 # Find the first contraction arc from the source if it exists
                 for arc_str in self.contraction_path:
                     if isinstance(arc_str, dict):
@@ -295,7 +325,7 @@ class ModifiedActivityExtraction:
                         # Record that we traversed this arc
                         new_traversed = {arc: 1}
                         
-                        # Record this as a timestep 1 activity even if it leads to deadlock
+                        # Record this as a timestep 1 activity with deadlock
                         self.activity_profiles.append({
                             'path': [src, dest],
                             'activity_profile': new_activity_profile,
@@ -305,36 +335,8 @@ class ModifiedActivityExtraction:
                             'reached_sink': False,
                             'reason': 'Deadlock'
                         })
-                        break 
-            
-            # If we've reached the sink, record this path
-            if current_node == self.sink:
-                self.activity_profiles.append({
-                    'path': path.copy(),
-                    'activity_profile': [step.copy() for step in activity_profile],
-                    'traversed_arcs': traversed_arcs.copy(),
-                    'violating_arcs_status': self.check_violating_arcs_status(traversed_arcs),
-                    'timesteps': timestep,
-                    'reached_sink': True
-                })
-                return
-                
-            
-            # Only consider nodes that are reachable
-            if current_node not in self.reachable_nodes:
-                return
-            
-            # Get all outgoing arcs from the current node that are part of paths to sink
-            outgoing_arcs = []
-            for dest in self.graph.get(current_node, []):
-                arc = f"{current_node}, {dest}"
-                # Only consider valid arcs that lead to the sink
-                if arc in self.T and arc in self.valid_arcs and dest in paths_to_sink:
-                    # Skip arcs that have reached their l-attribute limit
-                    arc_count = traversed_arcs.get(arc, 0)
-                    if arc_count >= self.T[arc]["l-attribute"]:
-                        continue
-                    outgoing_arcs.append((arc, dest))
+                        break
+                return  # No need to continue if there are no outgoing arcs
             
             # If we have no outgoing arcs and haven't reached the sink, this is a deadlock
             if not outgoing_arcs:
@@ -730,7 +732,7 @@ class ModifiedActivityExtraction:
                 continue
                 
             profile_counter += 1
-            print(f"\n=== ACTIVITY PROFILE {profile_counter} ===")
+            print(f"\n====== ACTIVITY PROFILE {profile_counter} ======")
             
             # Print the sequence of activities
             for t, activities in enumerate(profile_data['activity_profile']):

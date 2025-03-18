@@ -140,7 +140,7 @@ def ProcessR2(R2):
     vertices_list = []
     c_attribute_list = []
     l_attribute_list = []
-    eRU_list = []  # This will hold the eRU values (as strings)
+    eRU_list = []
 
     # Process each arc in the merged arcs
     for r in merged_arcs:
@@ -241,14 +241,13 @@ def ProcessR2(R2):
             
     # Print results for debugging
     print("R2:")
-    print('-' * 30)
+    print('-' * 20)
     print(f"Arcs List ({len(arcs_list)}): {arcs_list}")
     print(f"Vertices List ({len(vertices_list)}): {vertices_list}")
     print(f"C-attribute List ({len(c_attribute_list)}): {c_attribute_list}")
     print(f"L-attribute List ({len(l_attribute_list)}): {l_attribute_list}")
     print(f"eRU List ({len(eRU_list)}): {eRU_list}")
-    print(f"CAs_list ({len(cycle_arcs_with_min_l)}): , {cycle_arcs_with_min_l}")
-    print('-' * 60)
+    print('=' * 60)
 
     # Return the processed arcs
     return merged_arcs

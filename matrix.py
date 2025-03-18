@@ -392,7 +392,7 @@ class Matrix:
             logged_violations.add(composite_key)
             involved_arcs.add(arc)
             self.join_safe_violations.append(violation)
-            return True  # Indicate that a violation was logged
+            return True
 
         def find_all_paths(start, end):
             """Find all paths from start to end vertex using DFS while preventing cycles."""
@@ -574,116 +574,53 @@ class Matrix:
         def check_join_type(join_vertex):
             """Ensure all incoming arcs to a join are either all bridges or all non-bridges before determining join type."""
             incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
-            
             if len(incoming_arcs) <= 1:
-                return None
-                
+                return None  
+
             arc_conditions = {arc: self.find_r_by_arc(arc).get('c-attribute', None) for arc in incoming_arcs}
             unique_conditions = set(arc_conditions.values())
-            
+
             has_epsilon = any(c in {'ε', '0'} for c in unique_conditions)
             has_non_epsilon = any(c not in {'ε', '0'} for c in unique_conditions)
-            
-            # Count occurrences of each condition
-            condition_counts = {}
-            for condition in arc_conditions.values():
-                condition_counts[condition] = condition_counts.get(condition, 0) + 1
-            
-            # Check for AND-JOIN: all conditions are non-epsilon and must be unique
-            if all(c not in {'ε', '0'} for c in unique_conditions):
-                # Check for duplicates in AND-JOIN
-                if len(unique_conditions) < len(arc_conditions):
-                    print(f"WARNING: AND-JOIN at {join_vertex} has duplicate conditions")
+
+            if len(unique_conditions) == len(arc_conditions) and all(c not in {'ε', '0'} for c in unique_conditions):
                 return "AND-JOIN"
-            
-            # Check for OR-JOIN: all conditions are identical
             if len(unique_conditions) == 1:
                 return "OR-JOIN"
-            
-            # Check for MIX-JOIN: mix of epsilon and non-epsilon conditions
             if has_epsilon and has_non_epsilon:
-                # Non-epsilon conditions in MIX-JOIN must be identical
-                non_epsilon_conditions = [c for c in unique_conditions if c not in {'ε', '0'}]
-                if len(non_epsilon_conditions) > 1:
-                    print(f"WARNING: MIX-JOIN at {join_vertex} has different non-epsilon conditions: {non_epsilon_conditions}")
                 return "MIX-JOIN"
-            
             return None
-
+        
         def check_duplicate_conditions(join_vertex, join_type):
-            """Check condition rules based on join type for joins with more than 2 arcs."""
-            # print(f"Validating conditions for {join_type} at {join_vertex}")
-            
-            # Get all incoming arcs and their conditions
-            incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
-            
-            # Only check joins with more than 2 incoming arcs
-            if len(incoming_arcs) <= 2:
-                # print(f"  Join has {len(incoming_arcs)} incoming arcs (≤ 2), skipping condition check")
-                return True
-            
-            # print(f"  Join has {len(incoming_arcs)} incoming arcs (> 2), checking conditions")
-            
-            # Get conditions for each arc
-            arc_conditions = {}
-            for arc in incoming_arcs:
-                r_data = self.find_r_by_arc(arc)
-                if r_data:
-                    condition = r_data.get('c-attribute', None)
-                    arc_conditions[arc] = condition
-            
-            # Count occurrences of each condition
-            condition_counts = {}
-            for condition in arc_conditions.values():
-                condition_counts[condition] = condition_counts.get(condition, 0) + 1
-            
-            # print(f"  Condition counts: {condition_counts}")
-            
-            epsilon_values = {'ε', '0', None}
-            
+            """Enforce duplicate condition rules for AND-JOINs and MIX-JOINs."""
+            incoming_arcs = {src: self.find_r_by_arc(f"{src}, {join_vertex}") for src in vertex_incoming.get(join_vertex, [])}
+            arc_conditions = {src: arc_data.get('c-attribute', None) for src, arc_data in incoming_arcs.items()}
+            unique_conditions = set(arc_conditions.values())
+
             if join_type == "AND-JOIN":
-                # Rule: For AND-JOINs, there should be no duplicate conditions
-                duplicates = [cond for cond, count in condition_counts.items() if count > 1]
-                
-                if duplicates:
-                    # print(f"  VIOLATION: AND-JOIN has duplicate conditions: {duplicates}")
-                    
-                    # Find all arcs with duplicate conditions
-                    for condition in duplicates:
-                        duplicate_arcs = [arc for arc, cond in arc_conditions.items() if cond == condition]
-                        # print(f"    Arcs with duplicate condition '{condition}': {duplicate_arcs}")
+                for process in self._R_:
+                    if process["arc"].endswith(f", {join_vertex}"):
+                        intermediate_condition = process["c-attribute"]
+                        if intermediate_condition in unique_conditions:
+                            mark_arc_unsafe(process["arc"], "AND-JOIN Condition Violation", {
+                                'join_vertex': join_vertex,
+                                'duplicate_condition': intermediate_condition,
+                                'violation_type': 'duplicate_condition'
+                            })
+                            return False  
                         
-                        # Mark all arcs with duplicate conditions as unsafe
-                        for arc in duplicate_arcs:
-                            print(f"      Marking unsafe: {arc} with condition {condition}")
-                            mark_arc_unsafe(arc, "AND-JOIN Duplicate Condition", {
-                                'join_vertex': join_vertex,
-                                'duplicate_condition': condition,
-                                'duplicate_arcs': duplicate_arcs,  # Log the arcs with duplicate conditions
-                                'violation_type': 'and_join_duplicate'
-                            })
-                    return False  # Indicate that a violation was found
-                    
             elif join_type == "MIX-JOIN":
-                # Rule: For MIX-JOINs, all non-epsilon conditions must be identical
-                non_epsilon_conditions = [cond for cond in arc_conditions.values() 
-                                        if cond not in epsilon_values]
-                unique_non_epsilon = set(non_epsilon_conditions)
-                
-                if len(unique_non_epsilon) > 1:
-                    # print(f"  VIOLATION: MIX-JOIN has different non-epsilon conditions: {unique_non_epsilon}")
-                    
-                    # Mark arcs with different non-epsilon conditions
-                    for arc, condition in arc_conditions.items():
-                        if condition not in epsilon_values:
-                            print(f"    Marking unsafe: {arc} with condition {condition}")
-                            mark_arc_unsafe(arc, "MIX-JOIN Different Non-Epsilon Conditions", {
-                                'join_vertex': join_vertex,
-                                'non_epsilon_conditions': list(unique_non_epsilon),
-                                'violation_type': 'mix_join_different_conditions'
-                            })
-                            return False
-            
+                has_epsilon = any(c in {'ε', '0'} for c in unique_conditions)
+                has_non_epsilon = any(c not in {'ε', '0'} for c in unique_conditions)
+
+                if has_epsilon and has_non_epsilon and len(unique_conditions) > 2:
+                    mark_arc_unsafe(f"MIX-JOIN at {join_vertex}", "MIX-JOIN Condition Violation", {
+                        'join_vertex': join_vertex,
+                        'violating_conditions': unique_conditions,
+                        'violation_type': 'mix_join_condition_violation'
+                    })
+                    return False  
+
             return True
 
         def check_equal_L_values(join_vertex, join_type):
@@ -753,7 +690,7 @@ class Matrix:
                 # Call the previously missing functions 6-8
                 if not validate_join_inputs(join):
                     join_safe = False
-
+                
                 if not check_duplicate_conditions(join, join_type):
                     join_safe = False
                     

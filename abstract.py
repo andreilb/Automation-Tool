@@ -211,14 +211,14 @@ class AbstractArc:
 
     def calculate_eRU(self, start, end):
         """
-        Calculate the effective reusability (eRU) for an abstract arc.
+        Calculate the expanded reusability (eRU) for an abstract arc.
 
         Args:
             - start (str): Start vertex of the arc.
             - end (str): End vertex of the arc.
 
         Returns:
-            int: Effective reusability (eRU) for the arc.
+            int: Expanded reusability (eRU) for the arc.
         """
         eRU = 0
         # Loop through all in-bridge arcs to find relevant in-bridge vertices.

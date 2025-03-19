@@ -1123,46 +1123,4 @@ class ModifiedActivityExtraction:
         # Determine if the RDLT is classical sound
         is_sound = proper_termination and liveness
         
-        # # Generate detailed report
-        # report = []
-        # report.append('-' * 60)
-        # # report.append(f"Total Activity Profiles Generated: {len(valid_profiles)}")
-        # # report.append(f"Activities that Properly Terminated: {len(reach_sink)}")
-        # # report.append(f"Activities Ending in Deadlock: {len(deadlocks)}")
-        
-        # report.append(f"\nProper Termination: {'SATISFIED' if proper_termination else 'NOT SATISFIED'}")
-        # if not proper_termination:
-        #     report.append(f"- {len(deadlocks)} activity profiles ended in deadlock")
-            
-        #     # # List some deadlock examples
-        #     # if deadlocks:
-        #     #     report.append("\nDeadlocks:")
-        #     #     max_examples = min(3, len(deadlocks))
-        #     #     for i in range(max_examples):
-        #     #         # Find the last node in the deadlock path
-        #     #         last_node = None
-        #     #         for activities in reversed(deadlocks[i]['activity_profile']):
-        #     #             if activities:
-        #     #                 # Last activity's destination
-        #     #                 last_node = activities[-1][1]
-        #     #                 break
-                    
-        #     #         reason = deadlocks[i].get('reason', 'Unknown')
-        #     #         report.append(f"  - Deadlock at node {last_node}.")
-        
-        # report.append(f"\nLiveness: {'SATISFIED' if liveness else 'NOT SATISFIED'}")
-        # if not liveness:
-        #     report.append(f"- {len(non_traversed_arcs)} arcs are not traversed in any activity profile")
-            
-        #     # List some non-traversed arcs
-        #     if non_traversed_arcs:
-        #         report.append("\nNon-traversed Arcs:") #Cannot fully verify classical soundness if non-empty
-        #         max_examples = min(5, len(non_traversed_arcs))
-        #         for i, arc in enumerate(list(non_traversed_arcs)[:max_examples]):
-        #             report.append(f"  - {arc}")
-        #         if len(non_traversed_arcs) > max_examples:
-        #             report.append(f"  - And {len(non_traversed_arcs) - max_examples} more...")
-        
-        # # report.append(f"\nFINAL VERIFICATION: The RDLT is {'CLASSICAL SOUND' if is_sound else 'NOT Classical Sound'}")
-        
-        return is_sound #"\n".join(report)
+        return is_sound

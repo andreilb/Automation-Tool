@@ -42,14 +42,12 @@ class HelpDialog:
 This application automates the evaluation of an RDLT to determine its Classical Soundness by:
 
 • Extracting RDLT data from input files (text format)
-• Genertaing an Expanded Vertex Simplification (if RBS exists)
-• Checking for OR-JOIN conditions within the RBS
+• Generating an Expanded Vertex Simplification (if RBS exists)
+• Checking for OR-JOIN within the RBS
 • Running matrix operations to verify L-Safeness
 • Identifying arcs violating L-Safeness                        
 • Extracting activity profiles in case of violations
 • Generating Verification of Classical Soundness Results
-
-The application provides a simple GUI to select input files, process them, and view the results.
 """)
         overview_text.config(state=tk.DISABLED)
         
@@ -63,7 +61,7 @@ The application provides a simple GUI to select input files, process them, and v
         usage_text = scrolledtext.ScrolledText(usage_frame, wrap=tk.WORD, height=20)
         usage_text.pack(fill=tk.BOTH, expand=True)
         usage_text.insert(tk.END, """1. Select an Input File:
-   • Click the "Browse..." button to select a text file containing RDLT data
+   • Click the "Browse..." button to select a text file containing the input RDLT text
    • Alternatively, click one of the sample file buttons to select a predefined sample
 
 2. Process the File:
@@ -74,9 +72,9 @@ The application provides a simple GUI to select input files, process them, and v
    • The processing results will appear in the output text area
    • The status bar at the bottom will indicate whether processing was successful
 
-4. Save or Clear Results:
-   • Click "Save Output" to save the results to a text file
+4. Clear or Export Results:
    • Click "Clear Output" to clear the output text area
+   • Click "Export Results" to save the results to a text file
 
 File Format Requirements:
 The input text file should follow the specific RDLT format:
@@ -104,13 +102,19 @@ For examples, see the sample files provided.
         sample_text.pack(fill=tk.BOTH, expand=True)
         sample_text.insert(tk.END, """The application comes with several sample files demonstrating different test cases:
 
-• sample_rdlt.txt - Basic RDLT example
-• sample_lsafe.txt - Example of an L-Safe RDLT
-• sample_multiple_center.txt - RDLT with multiple centers
-• sample_stuckrdlt.txt - Example of a stuck RDLT
-• sample_relaxedwith multipleca.txt - Relaxed RDLT with multiple CAs
-• sample_rdlt_andjoin.txt - RDLT with AND-join
-• sample_1non_contractable.txt - RDLT with non-contractable elements
+• sample_rdlt.txt - Basic RDLT example (with EVSA)
+• sample_lsafe.txt - Example of an L-Safe RDLT (satisfies all 3 conditions)
+• sample_rbs.txt - Example of an RDLT without EVSA
+• sample_relaxed.txt - Example of a Relaxed Sound RDLT
+• sample_js_tc1.txt - Example of an RDLT violating JOIN-Safeness (branching within related processes)
+• sample_js_tc2.txt - Example of an RDLT violating JOIN-Safeness (branching from split to outside processes)
+• sample_js_tc3.txt - Example of an RDLT violating JOIN-Safeness (disconnected split and join)
+• sample_js_tc4.txt - Example of an RDLT violating JOIN-Safeness (branching out from intermediate processes)
+• sample_js_tc5.txt - Example of an RDLT violating JOIN-Safeness (branching out from intermediate processes to join)
+• sample_deadlock.txt - Example of an RDLT with deadlock
+• sample_multi_CA.txt - Example of an RDLT with multiple critical arcs
+• sample_multi_center.txt - Example of an RDLT with multiple centers/rbs
+
 
 To use these samples:
 1. Place the sample files in a folder named "rdlt_text" in the same directory as the application

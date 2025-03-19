@@ -50,12 +50,17 @@ class RDLTProcessorGUI:
         samples = [
             "sample_rdlt.txt", 
             "sample_lsafe.txt", 
-            "sample_multiple_center.txt", 
-            "sample_stuckrdlt.txt", 
-            "sample_relaxedwith multipleca.txt",
-            "sample_relaxed.txt",  
-            "sample_rdlt_andjoin.txt", 
-            "sample_1non_contractable.txt"
+            "sample_rbs.txt", 
+            "sample_relaxed.txt", 
+            "sample_js_tc1.txt",
+            "sample_js_tc2.txt",
+            "sample_js_tc3.txt",
+            "sample_js_tc4.txt",
+            "sample_js_tc5.txt",
+            "sample_deadlock.txt",
+            "sample_multi_CA.txt",
+            "sample_multi_center.txt"
+             
         ]
         
         buttons_frame = tk.Frame(samples_frame, bg="#f0f0f0")
@@ -68,8 +73,8 @@ class RDLTProcessorGUI:
             # Create button with display text but pass full filename to the command
             button = tk.Button(buttons_frame, text=display_text, 
                             command=lambda s=sample: self.select_sample(s))
-            row = i // 3
-            col = i % 3
+            row = i // 4
+            col = i % 4
             button.grid(row=row, column=col, padx=10, pady=5, sticky="ew")
             buttons_frame.columnconfigure(col, weight=1)
         
@@ -315,7 +320,7 @@ class RDLTProcessorGUI:
                 
                 # Print the combined list for debugging
                 print("R1 and R2:")
-                print('-' * 30)
+                print('-' * 20)
                 # print(f"Total arcs: {len(combined_R)}")
                 arcs_list_combined = [r['arc'] for r in combined_R if isinstance(r, dict) and 'arc' in r]
                 vertices_list_combined = sorted(set([v for arc in arcs_list_combined for v in arc.split(', ')]))

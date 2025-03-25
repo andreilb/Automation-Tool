@@ -140,9 +140,9 @@ class Matrix:
             arc = r['arc']
             x = r['arc'].split(', ')[0]
             y = r['arc'].split(', ')[1]
-            l = r['l-attribute']
+            l = str(r['l-attribute'])
             c = (str(r['c-attribute'])).replace('0', 'ε')  # Replace '0' with epsilon (ε)
-            eru = r['eRU']
+            eru = str(r['eRU'])
             op = str(r['c-attribute']) + "_" + y
             if op.startswith('0_'):
                 op = op.replace('0_', 'ε_') # Replace '0' with epsilon (ε)
@@ -150,7 +150,13 @@ class Matrix:
             matrix.append([arc, x, y, l, c, eru, 'cv_value' , op, 'cycle_vector', 'loopsafe', 'ocv_value', 'safeCA', 'joinsafe',r_id])
         self.rdlt_structure = matrix  # Store the RDLT structure in the class
         # print("Structure Format:: ['arc', 'x', 'y', 'l-attribute', 'c-attribute', 'eRU', 'Out Cycle Vector', 'Loop-Safe', 'Safe CA']")
-        # print(f"RDLT Structure: {self.rdlt_structure}")  # Debug: Show the RDLT structure
+        columns_to_print = [0, 3, 5, 7]
+        print("\nRDLT Structure:")
+        for row in self.rdlt_structure:
+            # Create a new list containing only the specified columns
+            filtered_row = [row[col] for col in columns_to_print if col < len(row)]
+            print(filtered_row)
+        print('=' * 60)
         return matrix
 
     def initialize_matrices(self, n, m):
@@ -219,23 +225,52 @@ class Matrix:
         Returns:
             str: The result of the logical OR operation between A and B.
         """
-        # Handle cases where one of A or B is 0
-        if A == '0' or B == '0':
-            if A == '0' and B == '0':
-                return '0'  # Special case for both being '0'
-            return A if B == '0' else B  # If one is 0, return the other
-
         # Get the signs of A and B
         sign_A = self.sign(A)
         sign_B = self.sign(B)
 
-        # Now apply the logic for literal OR as defined
-        if sign_A == 1 or (sign_A == -1 and sign_B != 1) or (sign_A == 0 and sign_B == 0):
+        # Rule (1): a ∨ a = a
+        if A == B:
             return A
-        elif sign_B == 1 or (sign_B == -1 and sign_A == 0):
+
+        # Rule (2): a ∨ 0 = a
+        if sign_B == 0:
+            return A
+
+        # Rule (7): 0 ∨ a = a
+        if sign_A == 0:
             return B
-        else:
-            return A  # Default behavior (just return A in case of other cases)
+
+        # Rule (3): a ∨ −a = a
+        if A == f"-{B}" or B == f"-{A}":
+            return A if sign_A == 1 else B
+
+        # Rule (4): −a ∨ a = a
+        # Handled by Rule (3) since the logic is symmetric
+
+        # Rule (5): −a ∨ 0 = −a
+        # Handled by Rule (2) and Rule (7)
+
+        # Rule (6): −a ∨ −a = −a
+        # Handled by Rule (1)
+
+        # Rule (8): 0 ∨ 0 = 0
+        # Handled by Rule (2) and Rule (7)
+
+        # Rule (9): 0 ∨ −a = −a
+        # Handled by Rule (7)
+
+        # Rule (10): ε ∨ ε = ε
+        # Handled by Rule (1)
+
+        # Rule (11): ε ∨ 0 = ε
+        # Handled by Rule (2)
+
+        # Rule (12): 0 ∨ ε = ε
+        # Handled by Rule (7)
+
+        # Default behavior: return A if B is 0, otherwise return B
+        return A if sign_B == 0 else B
 
 
     def cycle_vector_operation(self, r):
@@ -256,15 +291,15 @@ class Matrix:
                 B = 1  # Non-critical cycle
         else:
             B = 0  # Not part of a cycle
-
-        r[6] = B
-
-        # Calculate cycle value using element multiplication
-        cv = self.elementMult(r[6], r[7])
-        r[8] = cv
+        
+        cv = B
+        r[6] = cv
+        r[8] = self.elementMult(r[6], r[7])
+        # print("This is r[8] from cv", r[8])
+        cyc = r[8]
 
         # Update the arc in the matrix but return only the cycle value
-        return cv
+        return cv, cyc
 
     
     def out_cycle_vector_operation(self, r):
@@ -278,31 +313,52 @@ class Matrix:
         Returns:
             list: The updated arc with the new out-cycle and safeness values.
         """
-        
-        if r[6] == -1:
-            # Find arcs with the same start vertex (r[1])
-            start_vertex = r[1]
-            matching_arcs = [arc for arc in self.rdlt_structure if arc[1] == start_vertex]  # Filter arcs with the same start vertex
-            
-            for arc in matching_arcs:
-                # Determine if outgoing arc is non-critical (cv = 1 or 0)
-                if arc[6] == 1:  # Non-critical arc
-                    ocv = self.elementMult(r[6], r[7])
-                elif arc[6] == -1:  # Critical arc
-                    ocv = self.elementMult(r[6], r[7])
-        # If the arc is not critical (cv != -1), set ocv = 0
-        else:
-            ocv = 0
+        # Step 1: Out-Cycle Detection
+        # Group arcs by their start vertices (r[1])
+        start_vertex_to_arcs = {}
+        for arc_data in self.rdlt_structure:
+            start_vertex = arc_data[1]
+            if start_vertex not in start_vertex_to_arcs:
+                start_vertex_to_arcs[start_vertex] = []
+            start_vertex_to_arcs[start_vertex].append(arc_data)
 
+        # Step 2: Determine ocv for the current arc `r`
+        ocv = 0  # Default value for arcs not in a cycle
+
+        if r[6] == -1:  # Arc is part of a critical cycle
+            start_vertex = r[1]
+            arcs_from_start = start_vertex_to_arcs.get(start_vertex, [])
+            
+            # Check if there is another outgoing arc with r[6] != -1
+            has_non_critical_outgoing = False
+            for arc in arcs_from_start:
+                if arc[0] != r[0] and arc[6] != -1:  # Exclude the current arc and check for non-critical outgoing arcs
+                    has_non_critical_outgoing = True
+                    break
+
+            if has_non_critical_outgoing:
+                ocv = 1  # Safe branch (OutCycleVector = 1)
+            else:
+                ocv = -1  # Potentially unsafe branch (OutCycleVector = -1)
+        elif r[0] in self.all_aic_list:  # Arc is part of a non-critical cycle
+            ocv = 1  # Safe branch (OutCycleVector = 1)
+        else:
+            ocv = 0  # Arc is not part of a cycle
+
+        # Step 3: Update OutCycleVector (r[10])
         r[10] = ocv
 
-        # Perform literalOR between CycleVector and OutCycleVector
-        safe_entry = self.literalOR(r[8], r[10])
-        
-        # Update the Safe Vector
-        r[11] = safe_entry
+        # Step 4: Multiply OutCycleVector with C-attribute (r[7])
+        r[10] = self.elementMult(r[10], r[7])
 
-        return r
+        # Step 5: Safe Vector Calculation
+        # Perform logical OR between CycleVector (r[8]) and OutCycleVector (r[10])
+        r[11] = self.literalOR(r[10], r[8])  # Update SafeCA vector (r[11])
+
+        # Step 6: Safeness Checking
+        safeCA = r[11]  # Assume safeness initially
+
+        return safeCA
     
     def is_bridge(self, arc):
         """Determine if an arc is a bridge (exists in In_List or Out_List)."""
@@ -311,8 +367,7 @@ class Matrix:
                 return True, "bridge"
             if arc in self.Out_List:
                 return True, "bridge"
-        else:
-            return False, "non-bridge"
+        return False, "non-bridge"  # Make sure this is always reached
     
     def join_safe(self):
         """
@@ -811,25 +866,20 @@ class Matrix:
             # Compare L attribute with eRU as per algorithm (lines 21-33)
             if int(r[3]) > int(r[5]):  # L[x][y] > eRU
                 ls = 1  # Loop-safe
-            elif int(r[3]) < int(r[5]):  # L[x][y] < eRU
+            else:  # L[x][y] < eRU
                 ls = -1  # Not loop-safe
-                self.loop_safe_violations.append(r[0])  # Log the violation
-            else:  # L[x][y] == eRU
-                ls = 0  # Neutral case
+                # self.loop_safe_violations.append(r[0])  # Log the violation
         
         # Set the loop-safe value in the arc data
         r[9] = ls
-        
+
         # Perform element-wise multiplication with the cycle value (line 34)
-        loopsafe_result = self.elementMult(ls, cv)
-        
-        # Perform literal OR operation with the cycle value (line 34)
-        final_result = self.literalOR(loopsafe_result, cv)
+        loopsafe_result = self.elementMult(ls, r[7])
         
         # Update the arc data with the final result
-        r[9] = final_result
+        r[9] = loopsafe_result
         
-        return final_result
+        return loopsafe_result
 
     
     def find_r_by_arc(self, arc):
@@ -916,11 +966,11 @@ class Matrix:
         matrix = []
         
         for r in self.rdlt_structure:
-            cv = self.cycle_vector_operation(r)
+            cv, cyc = self.cycle_vector_operation(r)
             ls = self.loop_safe(r, cv)
             safe_vector = self.out_cycle_vector_operation(r)
             self.join_safe()
-            matrix.append([ls, safe_vector])
+            matrix.append([cv, cyc, ls, safe_vector])
 
         # Check each safety condition independently
         join_safe = self.checkIfAllPositive('join')
@@ -973,12 +1023,10 @@ class Matrix:
                     
                     # Print each violation component separately for debugging
                     print(f"\nJOIN-Safeness Violation:")
-                    print(f"  Type: {violation_details['type']}")
                     print(f"  r-id: {violation_details['r-id']}")
                     print(f"  arc: {violation_details['arc']}")
-                    print(f"  Split Origin: {violation_details['split_origin']}")
-                    print(f"  Join Vertex: {violation_details['join_vertex']}")
-                    print(f"  Problematic Arc: {violation_details['problematic_arc']}")
+                    # print(f"  Split Origin: {violation_details['split_origin']}")
+                    # print(f"  Join Vertex: {violation_details['join_vertex']}")
                     print(f"  Violation: {violation_details['violation']}")
 
         # Process Loop-Safeness Violations
@@ -1027,7 +1075,7 @@ class Matrix:
         # for row in self.rdlt_structure:
         #     print(row)
         #print specific arcs (arc, c-attribute, l-attribute, loop-safe, safe, join-safe)
-        columns_to_print = [0, 4, 3, 9, 11, 12]
+        columns_to_print = [0, 4, 3, 5, 9, 11, 12]
         
         for row in self.rdlt_structure:
             # Create a new list containing only the specified columns

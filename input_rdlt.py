@@ -1,4 +1,6 @@
 from pathlib import Path
+import utils
+from cycle import Cycle
 
 class Input_RDLT:
     """
@@ -106,7 +108,6 @@ class Input_RDLT:
         self.L_attribute_list = [i['l-attribute'] for i in R_list]
 
         # Print the extracted data for debugging
-        # print('-' * 60)
         print(f"\nInput RDLT: ")
         print('-' * 20)
         print(f"Arcs List ({len(self.Arcs_List)}): ", self.Arcs_List)
@@ -182,12 +183,73 @@ class Input_RDLT:
 
         self.user_input_to_evsa = [final_transform_R(rdlt) for rdlt in rdlts]
 
-        # Print final results for debugging (dictionary)
-        # print("Extracted RDLT Data (dict):")
-        # print('-' * 30)
-        # for rdlt in self.user_input_to_evsa:
-        #     print(rdlt)
+        # Compute eRU for R1
+        R1 = self.getR('R1')
+        if R1:
+            self._compute_eRU(R1)
 
+    def _compute_eRU(self, R1):
+        """
+        Computes the eRU values for arcs in R1 based on cycle detection.
+
+        Parameters:
+            - R1 (list): The R1 structure containing arcs and their attributes.
+        """
+        # Detect cycles in R1
+        cycle_instance = Cycle(R1)
+        cycle_R1 = cycle_instance.evaluate_cycle()
+
+        if not cycle_R1:
+            print("\nNo cycles detected in R1.\n")
+            print('-' * 30)
+        else:
+            # Iterate over each cycle
+            for cycle_data in cycle_R1:
+                cycle_arcs = cycle_data['cycle']
+                cycle_l_attributes = []
+
+                # Iterate over the arcs in the cycle
+                for cycle_arc in cycle_arcs:
+                    r_id, arc_name = cycle_arc.split(": ")
+                    arc_name = arc_name.strip()
+
+                    # Get the actual arc from R1 using r-id
+                    actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                    if actual_arc:
+                        # Find the matching arc in R1
+                        matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                        if matching_arc:
+                            l_attribute = matching_arc.get('l-attribute', None)
+                            if l_attribute is not None:
+                                cycle_l_attributes.append(int(l_attribute))  # Convert to int
+                            else:
+                                print(f"Warning: 'l-attribute' not found for arc {actual_arc}")
+                        else:
+                            print(f"Warning: No matching arc found for {actual_arc} in R1")
+                    else:
+                        print(f"Warning: No arc found in R1 for r-id {r_id}")
+
+                # Compute the critical arc value (minimum l-attribute in the cycle)
+                ca = min(cycle_l_attributes) if cycle_l_attributes else None
+
+                if ca is not None:
+                    # Update eRU for arcs in the cycle
+                    for cycle_arc in cycle_arcs:
+                        r_id, arc_name = cycle_arc.split(": ")
+                        arc_name = arc_name.strip()
+
+                        # Get the actual arc from R1 using r-id
+                        actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                        if actual_arc:
+                            # Find the matching arc in R1
+                            matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                            if matching_arc:
+                                # Update eRU to the critical arc's 'ca' value
+                                matching_arc['eRU'] = ca
+    
+    # get only R1 components for EVSA processing
     def getRs(self):
         """
         Fetches all RDLT structures except for R1.
@@ -196,8 +258,9 @@ class Input_RDLT:
             list: List of RDLT structures (R2, R3, etc.).
         """
         return [R for R in self.user_input_to_evsa if "R1" not in R.keys()]
-
-    def getR(self, R):
+    
+    # get only R2 components for EVSA processing
+    def getR(self, R): 
         """
         Fetches a specific RDLT structure (e.g., R1, R2, etc.) by its identifier.
 
@@ -211,10 +274,3 @@ class Input_RDLT:
             if dictionary is not None and R in dictionary:  # Check if dictionary is not None
                 return dictionary[R]
         return f"[WARNING] {R} has not been defined or is missing."
-
-if __name__ == '__main__':
-    # Example usage of the Input_RDLT class
-    input_data = Input_RDLT('your_file_path_here.txt')  # Make sure to set the correct path to the RDLT file
-    input_data.evaluate()  # Evaluates the RDLT input data
-    print(input_data.getRs())  # This will print R2, R3, etc. without R1
-    print(input_data.getR('R1'))  # This will print R1 structure

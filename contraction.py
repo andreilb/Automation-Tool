@@ -352,11 +352,9 @@ class ContractionPath:
         
         # logger.info(f"Final contracted path: {len(self.contracted_path)} arcs")
         # logger.info(f"Successful contractions with r-id: {len(self.successful_contractions_with_rid)}")
-        if self.failed_contractions:
-            print(f"Failed contractions: {len(self.failed_contractions_with_rid)}")
-            # Log detailed information about failed contractions
-            for failed in self.failed_contractions_with_rid:
-                print(f" - Arc: {failed['arc']}, R-ID: {failed['r-id']}, Reason: {failed.get('failure_reason', 'Unknown')}")
+        # if self.failed_contractions:
+        #     print(f"Failed Contractions ({len(self.failed_contractions_with_rid)}):")
+        #     print(       [item['arc'] for item in self.failed_contractions_with_rid])
     
     def get_contractions_with_rid(self):
         """

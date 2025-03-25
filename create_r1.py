@@ -23,6 +23,7 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
     
     # Initialize abstract_arc_data
     abstract_arc_data = []
+    added_abstract_arcs = []  # Initialize here to avoid reference before assignment
     
     # Extract components from R1
     arcs_list_R1 = [r['arc'] for r in R1 if isinstance(r, dict) and 'arc' in r]
@@ -32,63 +33,73 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
 
     # Check if R2 exists and if all JOINs are OR-JOINs
     if R2:  # Check if R2 is not empty or None
-        # Check for inconsistent c-attributes in R2
-        from joins import TestJoins
-        check = TestJoins.checkSimilarTargetVertexAndUpdate(R1, R2)
-        
-        # If check returns R1 + R2, it means not all JOINs are OR-JOINs
-        if check == R1 + R2:
-            print("\nJOINs Evaluation: Not all JOINs in R2 are OR-JOINs. Skipping abstract arc generation.\n")
-            print('=' * 60)
-        else:
-            # All JOINs are OR-JOINs, proceed with abstract arc generation
-            print("\nJOINs Evaluation: All JOINs in R2 are OR-JOINs. Generating abstract arcs...\n")
-            print('=' * 60)
 
-            # Initialize AbstractArc class and generate abstract arcs
-            abstract = AbstractArc(R1, R2, In_list, Out_list, Centers_list, arcs_list)
+        # Initialize AbstractArc class and generate abstract arcs
+        abstract = AbstractArc(R1, R2, In_list, Out_list, Centers_list, arcs_list)
 
-            # Identify abstract vertices
-            abstract_vertices = abstract.find_abstract_vertices()
-            # print("Final Abstract vertices: ", abstract_vertices)
+        # Identify abstract vertices
+        abstract_vertices = abstract.find_abstract_vertices()
+        # print("Final Abstract vertices: ", abstract_vertices)
 
-            try:
-                # Create initial abstract arcs
-                prepreFinal_abstractList = abstract.make_abstract_arcs_stepA(abstract_vertices)
-                # print("Step A PrepreFinal Abstract List on try: ", prepreFinal_abstractList)
-            except Exception as e:
-                print(f"[ERROR] Failed to generate abstract arcs in Step A: {e}")
-                return
+        try:
+            # Create initial abstract arcs
+            prepreFinal_abstractList = abstract.make_abstract_arcs_stepA(abstract_vertices)
+            # print("Step A PrepreFinal Abstract List on try: ", prepreFinal_abstractList)
+        except Exception as e:
+            print(f"[ERROR] Failed to generate abstract arcs in Step A: {e}")
+            return
 
-            try:
-                # Add self-loops to abstract arcs
-                preFinal_abstractList = abstract.make_abstract_arcs_stepB(prepreFinal_abstractList)
-                # print("Step B PreFinal Abstract List on try: ", preFinal_abstractList)
-            except Exception as e:
-                print(f"[ERROR] Failed to add self-loops in Step B: {e}")
-                return
+        try:
+            # Add self-loops to abstract arcs
+            preFinal_abstractList = abstract.make_abstract_arcs_stepB(prepreFinal_abstractList)
+            # print("Step B PreFinal Abstract List on try: ", preFinal_abstractList)
+        except Exception as e:
+            print(f"[ERROR] Failed to add self-loops in Step B: {e}")
+            return
 
-            try:
-                # Finalize abstract arcs
-                final_abstract_arcs = abstract.make_abstract_arcs_stepC(preFinal_abstractList)
-                # print("Step C Final Abstract Arcs on try: ", final_abstract_arcs)
-            except Exception as e:
-                print(f"[ERROR] Failed to finalize abstract arcs in Step C: {e}")
-                return
+        try:
+            # Finalize abstract arcs
+            final_abstract_arcs = abstract.make_abstract_arcs_stepC(preFinal_abstractList)
+            # print("Step C Final Abstract Arcs on try: ", final_abstract_arcs)
+        except Exception as e:
+             print(f"[ERROR] Failed to finalize abstract arcs in Step C: {e}")
+             return
 
-            # Assign unique r-ids to abstract arcs before adding to R1
-            r_id_offset = max(
-                int(arc['r-id'].split('-')[1]) for arc in R1 if 'r-id' in arc and arc['r-id'].startswith('R1-')
-            ) + 1  # Start with the next available r-id
+        # Assign unique r-ids to abstract arcs before adding to R1
+        a_id_offset = 1 
 
-            for arc in final_abstract_arcs:
-                # Assign unique r-id to each abstract arc
-                arc['r-id'] = f'R1-{r_id_offset}'
-                r_id_offset += 1
-                abstract_arc_data.append(arc)
+        for arc in final_abstract_arcs:
+            # Assign unique r-id
+            if 'r-id' not in arc or not arc['r-id']:  # Check if r-id is missing or empty
+                arc['r-id'] = f'A-{a_id_offset}'
+                a_id_offset += 1  # Increment the counter for the next abstract arc
+                
+            # Make sure c-attribute, l-attribute, and eRU are set
+            if 'c-attribute' not in arc:
+                arc['c-attribute'] = ''  # Set appropriate default value
+            if 'l-attribute' not in arc:
+                arc['l-attribute'] = '0'  # Set appropriate default value
+            if 'eRU' not in arc:
+                arc['eRU'] = '0'  # Set appropriate default value
+                
+            # Mark as abstract arc to prevent eRU update during cycle detection
+            arc['is_abstract'] = True
 
-            # Add abstract arcs with r-id to R1
-            R1.extend(abstract_arc_data)
+            # Append a copy to prevent unintended modification
+            abstract_arc_data.append(arc.copy())
+
+        # Add abstract arcs with r-id to R1
+        # Store initial length before adding abstract arcs
+        initial_length = len(R1)  
+
+        # Add abstract arcs to R1
+        R1.extend(abstract_arc_data)
+
+        # Extract only the added abstract arcs
+        added_abstract_arcs = R1[initial_length:]
+
+            # # Debug: Verify extracted list
+            # print(f"Added Abstract Arcs: {added_abstract_arcs}")
 
             # print("Abstract Arcs Added to R1: ", abstract_arc_data)
     else:
@@ -152,22 +163,24 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
                     actual_arc = utils.get_arc_from_rid(r_id, R1)
 
                     if actual_arc:
-                        # Check if the arc is not an abstract arc
-                        if 'abstract' not in actual_arc:
-                            # Find the matching arc in R1
-                            matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                        # Find the matching arc in R1
+                        matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
 
-                            if matching_arc:
-                                # Set eRU to the critical arc's 'ca' value (as string)
+                        if matching_arc:
+                            # Check if the arc is an abstract arc
+                            if matching_arc.get('is_abstract', False):
+                                # Skip updating eRU for abstract arcs
+                                # print(f"Skipping eRU update for abstract arc: {matching_arc['arc']}")
+                                continue
+                            else:
+                                # Set eRU to the critical arc's 'ca' value
                                 matching_arc['eRU'] = ca
                                 # print(f"Set eRU for arc {matching_arc['arc']} to {matching_arc['eRU']}")
 
                             # Compare l-attribute and eRU for each arc, and append arcs with the minimum l-attribute value
-                            if matching_arc and int(matching_arc['l-attribute']) == ca:
+                            # Only include non-abstract arcs in the critical arc list
+                            if not matching_arc.get('is_abstract', False) and int(matching_arc['l-attribute']) == ca:
                                 cycle_arcs_with_min_l.append(matching_arc)
-                        # else:
-                        #     print(f"\nSkipping abstract arc: {actual_arc}\n")
-                        #     print('-' * 30)
 
             else:
                 print("\nNo critical arc found in this cycle.\n")
@@ -178,16 +191,24 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
 
     # Fixes incorrectly formatted eRU with no ''
     eRU_list = [str(r.get('eRU', '0')) for r in R1] 
+    abstract_list = [str(r.get('arc')) for r in added_abstract_arcs] 
+    abstract_l = [str(r.get('l-attribute')) for r in added_abstract_arcs] 
+    abstract_c = [str(r.get('c-attribute')) for r in added_abstract_arcs] 
+    abstract_eRU = [str(r.get('eRU')) for r in added_abstract_arcs] 
+   
 
     # Print debugging results
     print("R1:")
     print('-' * 20)
-    print(f"Arcs List ({len(arcs_list_R1)}): {arcs_list_R1}")
-    print(f"Vertices List ({len(vertices_list_R1)}): {vertices_list_R1}")
-    print(f"C-attribute List ({len(c_attribute_list_R1)}): {c_attribute_list_R1}")
-    print(f"L-attribute List ({len(l_attribute_list_R1)}): {l_attribute_list_R1}")
-    print(f"eRU List ({len(eRU_list)}): {eRU_list}")
-    # print(f"CAs_list ({len(all_cycle_arcs_with_min_l)}): {all_cycle_arcs_with_min_l}")
+    print(f"Arcs List ({len(arcs_list_R1 + abstract_list)}): {arcs_list_R1 + abstract_list}")
+    # print(f"Vertices List ({len(vertices_list_R1)}): {vertices_list_R1}")
+    print(f"C-attribute List ({len(c_attribute_list_R1 + abstract_c)}): {c_attribute_list_R1 + abstract_c}")
+    print(f"L-attribute List ({len(l_attribute_list_R1 + abstract_l)}): {l_attribute_list_R1 + abstract_l }")
+    print(f"eRU List ({len(eRU_list + abstract_eRU)}): {eRU_list + abstract_eRU}")
+    print(f"\nAbstract Arcs List: ({len(abstract_list)}) : {abstract_list} ")
+    print(f"C-attribute List ({len(abstract_c)}): {abstract_c}")
+    print(f"L-attribute List ({len(abstract_l)}): {abstract_l}")
+    print(f"eRU List ({len(abstract_eRU)}): {abstract_eRU}")
     print('=' * 60)
 
     return R1

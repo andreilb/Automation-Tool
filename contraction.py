@@ -1,17 +1,7 @@
 import utils
 import logging
+import copy
 from itertools import chain
-
-# Set up logging configuration
-# logging.basicConfig(
-#     level=logging.DEBUG,
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler("contraction_debug.log"),
-#         logging.StreamHandler()
-#     ]
-# )
-# logger = logging.getLogger('ContractionPath')
 
 class ContractionPath:
     def __init__(self, R, violations):
@@ -20,18 +10,15 @@ class ContractionPath:
 
         Parameters:
             - R (list): The RDLT structure containing arcs.
+            - violations (list): List of violating arcs.
         """
         self.R = R
-        self.violations = violations
-        self.graph = utils.build_graph(R)
-        self.contracted_path = []  # Store the final contracted path
-        self.successful_contractions_with_rid = []  # Store successful contractions with r-id
-        self.failed_contractions_with_rid = []  # Store failed contractions with r-id
-        self.successfully_contracted_arcs = set()
-        self.failed_contractions = set()  # Track failed contractions as a set
-        self.unreached_arcs = set(arc['arc'] for arc in R)
         
-        # Keep track of arcs by their start and end vertices
+        # Convert violations to a list of arc strings if they are dictionaries
+        self.violations = [v['arc'] if isinstance(v, dict) else v for v in violations]
+        
+        self.graph = utils.build_graph(R)
+        self.contraction_paths = {}  # Store the contraction paths for each violation
         self.arc_pairs = {}
         
         for arc_data in R:
@@ -44,19 +31,25 @@ class ContractionPath:
                 self.arc_pairs[pair].append(arc)
             except ValueError:
                 print(f"Invalid arc format: {arc}")
+                
+        # Create contraction paths for each violation
+        self.create_contraction_paths_for_violations()
+        
+        # Print detailed contraction paths
+        self.print_contraction_paths()
 
-    def get_outgoing_arcs(self, vertex):
+    def get_outgoing_arcs(self, vertex, R):
         """
         Gets all outgoing arcs and their c-attributes for a given vertex.
         """
         outgoing_arcs = []
-        for arc_data in self.R:
+        for arc_data in R:
             start, end = arc_data['arc'].split(', ')
             if start == vertex:
                 outgoing_arcs.append(arc_data)
         return outgoing_arcs
 
-    def can_contract(self, arc, superset):
+    def can_contract(self, arc, superset, R):
         """
         Determines if an arc can be contracted by checking its incoming arcs.
         Returns a tuple (can_contract, reason) where reason is None if can_contract is True,
@@ -65,16 +58,14 @@ class ContractionPath:
         try:
             start, end = arc.split(', ')
         except ValueError:
-            # logger.error(f"Invalid arc format: {arc}. Expected format: 'start, end'.")
             return False, "Invalid arc format"
 
-        arc_data = next((a for a in self.R if a['arc'] == arc), None)
+        arc_data = next((a for a in R if a['arc'] == arc), None)
         if not arc_data:
-            # logger.error(f"Arc {arc} not found in RDLT.")
             return False, "Arc not found in RDLT"
 
         # Get all incoming arcs to the end vertex
-        incoming_arcs = [a for a in self.R if a['arc'].endswith(f", {end}")]
+        incoming_arcs = [a for a in R if a['arc'].endswith(f", {end}")]
 
         # If there is only one incoming arc (the current arc), it can be contracted
         if len(incoming_arcs) == 1 and incoming_arcs[0]['arc'] == arc:
@@ -95,32 +86,31 @@ class ContractionPath:
             violating_arcs = []
             for c_attribute in conflicting_c_attributes:
                 violating_arcs.extend([arc for arc in conflicting_arcs if 
-                                      next((a for a in self.R if a['arc'] == arc), {}).get('c-attribute', '0') == c_attribute])
+                                      next((a for a in R if a['arc'] == arc), {}).get('c-attribute', '0') == c_attribute])
             
             return False, f"Conflicting with violating arc: {', '.join(violating_arcs)}"
 
         return True, None
 
-    def get_rid_from_arc(self, arc_str):
+    def get_rid_from_arc(self, arc_str, R):
         """
         Gets the r-id for a given arc string.
         """
-        for arc_data in self.R:
+        for arc_data in R:
             if arc_data['arc'] == arc_str:
                 return arc_data.get('r-id')
         return None
 
-    def contract_paths(self):
+    def contract_paths_for_violation(self, violation_arc, R_copy):
         """
-        Contracts paths from source to sink sequentially, with improved handling of failed contractions.
-        Also tracks r-id for successful and failed contractions, and reasons for failure.
+        Contracts paths from source to sink for a specific violation.
+        Returns a list of contracted arcs and a dictionary of unsuccessful contractions.
         """
-        source, sink = utils.get_source_and_target_vertices(self.R)
-        # logger.info(f"Attempting contraction from {source} to {sink}")
+        source, sink = utils.get_source_and_target_vertices(R_copy)
         
         # Initialize superset with c-attributes of source's outgoing arcs
         current_superset = {'0'}
-        source_outgoing_arcs = self.get_outgoing_arcs(source)
+        source_outgoing_arcs = self.get_outgoing_arcs(source, R_copy)
         for arc_data in source_outgoing_arcs:
             c_attribute = arc_data.get('c-attribute', '0')
             if c_attribute != '0':
@@ -138,6 +128,14 @@ class ContractionPath:
         # Track contracted arc pairs to avoid duplicates
         contracted_arc_pairs = set()
         
+        # Track contracted arcs
+        contracted_path = []
+        successful_contractions = []
+        failed_contractions = []
+        
+        # Unreached arcs
+        unreached_arcs = set(arc['arc'] for arc in R_copy)
+        
         # Iterate until all arcs are processed or no further contractions are possible
         while reached_vertices and superset_updated:
             contracted_in_iteration = set()
@@ -148,19 +146,18 @@ class ContractionPath:
             # Find all outgoing arcs of reached vertices
             candidate_arcs = []
             for vertex in reached_vertices:
-                for arc_data in self.get_outgoing_arcs(vertex):
+                for arc_data in self.get_outgoing_arcs(vertex, R_copy):
                     arc_str = arc_data['arc']
                     try:
                         start, end = arc_str.split(', ')
                         pair = (start, end)
                         # Only consider if not already contracted
-                        if pair not in contracted_arc_pairs and arc_str in self.unreached_arcs:
+                        if pair not in contracted_arc_pairs and arc_str in unreached_arcs:
                             candidate_arcs.append(arc_str)
                     except ValueError:
                         print(f"Invalid arc format: {arc_str}")
                     
             if not candidate_arcs:
-                # logger.warning("No more candidate arcs to contract. Breaking loop.")
                 break
 
             # Try to contract candidate arcs
@@ -172,27 +169,24 @@ class ContractionPath:
                     if pair in contracted_arc_pairs:
                         continue
                         
-                    can_contract, failure_reason = self.can_contract(arc, current_superset)
+                    can_contract, failure_reason = self.can_contract(arc, current_superset, R_copy)
                     if can_contract:
                         # Get r-id for the arc
-                        r_id = self.get_rid_from_arc(arc)
+                        r_id = self.get_rid_from_arc(arc, R_copy)
                         
                         # Contract the arc
-                        self.successfully_contracted_arcs.add(arc)
                         contracted_in_iteration.add(arc)
                         contracted_arc_pairs.add(pair)
                         
                         # Store the successful contraction with r-id
-                        self.successful_contractions_with_rid.append({
+                        successful_contractions.append({
                             'arc': arc,
                             'r-id': r_id
                         })
                         
                         # Remove all instances of this arc from unreached_arcs
                         for duplicate_arc in self.arc_pairs.get(pair, []):
-                            self.unreached_arcs.discard(duplicate_arc)
-                            # Also remove from failed contractions if present
-                            self.failed_contractions.discard(duplicate_arc)
+                            unreached_arcs.discard(duplicate_arc)
                         
                         # Update the dummy vertex
                         dummy_vertex += end
@@ -201,7 +195,7 @@ class ContractionPath:
                         reached_vertices.add(end)
 
                         # Update superset with c-attributes of outgoing arcs
-                        for outgoing_arc in self.get_outgoing_arcs(end):
+                        for outgoing_arc in self.get_outgoing_arcs(end, R_copy):
                             c_attr = outgoing_arc.get('c-attribute', '0')
                             if c_attr not in current_superset:
                                 current_superset.add(c_attr)
@@ -211,33 +205,26 @@ class ContractionPath:
                         superset_updated = True
                         
                         # Add to the contracted path
-                        self.contracted_path.append(arc)
+                        contracted_path.append(arc)
                     else:
                         # Get r-id for the arc
-                        r_id = self.get_rid_from_arc(arc)
-                        
-                        # Add to failed contractions
-                        self.failed_contractions.add(arc)
+                        r_id = self.get_rid_from_arc(arc, R_copy)
                         
                         # Store the failed contraction with r-id and failure reason
-                        self.failed_contractions_with_rid.append({
+                        failed_contractions.append({
                             'arc': arc,
                             'r-id': r_id,
                             'failure_reason': failure_reason
                         })
-                        
-                        # logger.info(f"Failed to contract arc {arc} with r-id {r_id}. Reason: {failure_reason}")
                 except ValueError:
                     print(f"Invalid arc format: {arc}")
             
-            # If no contractions happened in this iteration but the superset was updated,
-            # retry all failed contractions
+            # Retry failed contractions if superset was updated
             if not contracted_in_iteration and superset_updated:
-                retry_candidates = list(self.failed_contractions)
+                retry_candidates = [fc['arc'] for fc in failed_contractions]
                 
                 # Clear failed contractions before retrying
-                self.failed_contractions = set()
-                self.failed_contractions_with_rid = []
+                failed_contractions = []
                 
                 retry_success = False
                 for arc in retry_candidates:
@@ -249,25 +236,24 @@ class ContractionPath:
                         if pair in contracted_arc_pairs:
                             continue
                             
-                        can_contract, failure_reason = self.can_contract(arc, current_superset)
+                        can_contract, failure_reason = self.can_contract(arc, current_superset, R_copy)
                         if can_contract:
                             # Get r-id for the arc
-                            r_id = self.get_rid_from_arc(arc)
+                            r_id = self.get_rid_from_arc(arc, R_copy)
                             
                             # Contract the arc
-                            self.successfully_contracted_arcs.add(arc)
                             contracted_in_iteration.add(arc)
                             contracted_arc_pairs.add(pair)
                             
                             # Store the successful contraction with r-id
-                            self.successful_contractions_with_rid.append({
+                            successful_contractions.append({
                                 'arc': arc,
                                 'r-id': r_id
                             })
                             
                             # Remove all instances of this arc
                             for duplicate_arc in self.arc_pairs.get(pair, []):
-                                self.unreached_arcs.discard(duplicate_arc)
+                                unreached_arcs.discard(duplicate_arc)
                             
                             # Update the dummy vertex
                             dummy_vertex += end
@@ -276,7 +262,7 @@ class ContractionPath:
                             reached_vertices.add(end)
 
                             # Update superset with c-attributes of outgoing arcs
-                            for outgoing_arc in self.get_outgoing_arcs(end):
+                            for outgoing_arc in self.get_outgoing_arcs(end, R_copy):
                                 c_attr = outgoing_arc.get('c-attribute', '0')
                                 if c_attr not in current_superset:
                                     current_superset.add(c_attr)
@@ -287,96 +273,122 @@ class ContractionPath:
                             retry_success = True
                             
                             # Add to the contracted path
-                            self.contracted_path.append(arc)
-                            
-                            # logger.info(f"Successfully contracted arc {arc} with r-id {r_id} after retry")
+                            contracted_path.append(arc)
                         else:
                             # Get r-id for the arc
-                            r_id = self.get_rid_from_arc(arc)
-                            
-                            # Add back to failed contractions
-                            self.failed_contractions.add(arc)
+                            r_id = self.get_rid_from_arc(arc, R_copy)
                             
                             # Store the failed contraction with r-id and failure reason
-                            self.failed_contractions_with_rid.append({
+                            failed_contractions.append({
                                 'arc': arc,
                                 'r-id': r_id,
                                 'failure_reason': failure_reason
                             })
-                            
-                            # logger.info(f"Failed to contract arc {arc} with r-id {r_id} after retry. Reason: {failure_reason}")
                     except ValueError:
                         print(f"Invalid arc format: {arc}")
                 
                 # If no retries were successful, break the loop
                 if not retry_success:
-                    # logger.warning("No successful contractions after retrying. Breaking loop.")
                     break
             
             # If no contractions happened and no superset update, break the loop
             if not contracted_in_iteration and not superset_updated:
-                # logger.warning("No contractions and no superset update. Breaking loop.")
                 break
 
-        # Create a deduplicated contracted path (without r-id)
+        # Create a deduplicated contracted path
         unique_contracted_path = []
         seen_arc_pairs = set()
-        for arc in self.contracted_path:
+        for arc in contracted_path:
             start, end = arc.split(', ')
             pair = (start, end)
             if pair not in seen_arc_pairs:
                 unique_contracted_path.append(arc)
                 seen_arc_pairs.add(pair)
         
-        # Replace the contracted path with the deduplicated version
-        self.contracted_path = unique_contracted_path
-        
-        # Deduplicate successful and failed contractions with r-id by arc
+        # Deduplicate successful and failed contractions
         unique_successful = []
         unique_failed = []
         seen_success_arcs = set()
         seen_failed_arcs = set()
         
-        for item in self.successful_contractions_with_rid:
+        for item in successful_contractions:
             if item['arc'] not in seen_success_arcs:
                 unique_successful.append(item)
                 seen_success_arcs.add(item['arc'])
                 
-        for item in self.failed_contractions_with_rid:
+        for item in failed_contractions:
             if item['arc'] not in seen_failed_arcs:
                 unique_failed.append(item)
                 seen_failed_arcs.add(item['arc'])
         
-        self.successful_contractions_with_rid = unique_successful
-        self.failed_contractions_with_rid = unique_failed
-        
-        # logger.info(f"Final contracted path: {len(self.contracted_path)} arcs")
-        # logger.info(f"Successful contractions with r-id: {len(self.successful_contractions_with_rid)}")
-        # if self.failed_contractions:
-        #     print(f"Failed Contractions ({len(self.failed_contractions_with_rid)}):")
-        #     print(       [item['arc'] for item in self.failed_contractions_with_rid])
-    
-    def get_contractions_with_rid(self):
+        return unique_contracted_path, unique_successful, unique_failed
+
+    def print_contraction_paths(self):
         """
-        Returns the successful and failed contractions with their associated r-ids.
+        Prints detailed information about contraction paths for each violating arc.
+        """
+        print("\n--- Contraction Paths for Violations ---")
+        for violation_arc, path_data in self.contraction_paths.items():
+            print(f"\nViolation Arc: {violation_arc}")
+            
+            # Determine unreached arcs
+            all_arcs = {arc_data['arc'] for arc_data in self.R}
+            contracted_arcs = set(path_data['contracted_path'])
+            failed_arcs = {failed['arc'] for failed in path_data['failed_contractions']}
+            
+            unreached_arcs = all_arcs - contracted_arcs - failed_arcs
+            
+            # Conditionally print sections
+            if path_data['contracted_path']:
+                print("Contracted Path:")
+                contracted_tuples = [tuple(arc.split(', ')) for arc in path_data['contracted_path']]
+                print(contracted_tuples)
+            
+            if path_data['successful_contractions']:
+                print("\nSuccessful Contractions:")
+                successful_arcs = [contract['arc'] for contract in path_data['successful_contractions']]
+                print(successful_arcs)
+            
+            if path_data['failed_contractions']:
+                print("\nFailed Contractions:")
+                failed_arcs = [failed['arc'] for failed in path_data['failed_contractions']]
+                print(failed_arcs)
+            
+            if unreached_arcs:
+                print("\nUnreached Arcs:")
+                print(list(unreached_arcs))
+
+    def create_contraction_paths_for_violations(self):
+        """
+        Creates contraction paths for each violation.
+        """
+        for violation_arc in self.violations:
+            # Create a fresh copy of R for each violation to ensure independent processing
+            R_copy = copy.deepcopy(self.R)
+            
+            contracted_path, successful_contractions, failed_contractions = self.contract_paths_for_violation(violation_arc, R_copy)
+            
+            self.contraction_paths[violation_arc] = {
+                'contracted_path': contracted_path,
+                'successful_contractions': successful_contractions,
+                'failed_contractions': failed_contractions
+            }
+        
+        # Verify that we have a contraction path for each violation
+        assert len(self.violations) == len(self.contraction_paths), "Number of contraction paths does not match number of violations"
+            
+    def get_contraction_paths(self):
+        """
+        Returns the contraction paths for each violation and a consolidated list of failed contractions.
         
         Returns:
-            tuple: A tuple containing two lists:
-                - successful_contractions_with_rid: List of successful contractions with r-id
-                - failed_contractions_with_rid: List of failed contractions with r-id
+            tuple: A tuple containing:
+            - dict: A dictionary with violations as keys and contraction paths as values
+            - list: A consolidated list of all failed contractions across all violations
         """
-        return self.successful_contractions_with_rid, self.failed_contractions_with_rid
-    
-    def get_list_contraction_arcs(self):
-        """
-        Returns just the 'arc' values from successful and failed contractions.
+        # Consolidate failed contractions into a single list
+        all_failed_contractions = []
+        for path_data in self.contraction_paths.values():
+            all_failed_contractions.extend(path_data['failed_contractions'])
         
-        Returns:
-            tuple: A tuple containing two lists:
-                - successful_arcs: List of arc strings from successful contractions
-                - failed_arcs: List of arc strings from failed contractions
-        """
-        successful_arcs = [item['arc'] for item in self.successful_contractions_with_rid]
-        failed_arcs = [item['arc'] for item in self.failed_contractions_with_rid]
-        
-        return successful_arcs, failed_arcs
+        return self.contraction_paths, all_failed_contractions

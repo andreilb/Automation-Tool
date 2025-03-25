@@ -382,29 +382,24 @@ class RDLTProcessorGUI:
             contraction_path = ContractionPath(combined_R if 'combined_R' in locals() else R1, violations)
 
             # Call the contraction process and store the results
-            contraction_path.contract_paths()
-            path, failed_contractions = contraction_path.get_contractions_with_rid()
-            list_path, list_failed = contraction_path.get_list_contraction_arcs()
+            path, failed = contraction_path.get_contraction_paths()
             # Print the final contraction paths
-            print(f"\nContraction path: {list_path}\n")
-            # print(f"Failed contractions: {list_failed}\n")
+            print(f"\nContraction path: {path}\n")
+            print(f"Failed contractions: {failed}\n")
+
+            contraction_path.print_contraction_paths()
 
             # If using combined R1 and R2, pass In_list and Out_list to Modified Activity Extraction
             if 'combined_R' in locals():
                 # Use cycle_list when creating ModifiedActivityExtraction
                 if Centers_list:
-                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, failed_contractions, cycle_combined.Cycle_List, R2, In_list, Out_list)
-                    activity_profile= modified_activity.analyze_model()
+                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, cycle_combined.Cycle_List, R2, In_list, Out_list)
 
                 else:
-                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, failed_contractions, cycle_combined.Cycle_List)
-                    activity_profile, violations = modified_activity.analyze_model()
-                    is_sound, report = modified_activity.verify_classical_soundness()
-                    print(report)
+                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, cycle_combined.Cycle_List)
             else:
                 # Run Modified Activity Extraction without in_list and out_list
-                modified_activity = ModifiedActivityExtraction(R1, path, violations, failed_contractions, cycle_R1.Cycle_List)
-                activity_profile = modified_activity.analyze_model()
+                modified_activity = ModifiedActivityExtraction(R1, path, violations, cycle_R1.Cycle_List)
 
 
 def main():

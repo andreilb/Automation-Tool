@@ -62,7 +62,7 @@ class ModifiedActivityExtraction:
 
     def _check_join_traversability(self, arc, current_vertex):
         """
-        Enhanced join traversability check with backtracking support
+        Enhanced join traversability check that properly handles unreachable incoming arcs
         """
         arc_str = self._safe_get_arc(arc)
         current_c_attr = self._get_c_attribute(arc)
@@ -75,6 +75,14 @@ class ModifiedActivityExtraction:
         join_type = join_info['type']
         incoming_arcs = join_info['incoming_arcs']
         c_attributes = join_info['c_attributes']
+
+        # First check if any incoming arcs are completely unreachable
+        for inc_arc in incoming_arcs:
+            inc_arc_str = self._safe_get_arc(inc_arc)
+            source, _ = inc_arc_str.split(', ')
+            if not self._is_vertex_reachable(source) and source != self.source:
+                # If an incoming arc's source is unreachable and not the start vertex
+                return False, []
 
         # OR-JOIN: freely traversable if c-attributes are same
         if join_type == 'OR-JOIN':
@@ -90,6 +98,11 @@ class ModifiedActivityExtraction:
         if join_type == 'AND-JOIN':
             if current_c_attr != '0':
                 # Must traverse all non-epsilon arcs together
+                # Check if any non-epsilon arcs are unreachable
+                for arc in non_epsilon_arcs:
+                    source, _ = self._safe_get_arc(arc).split(', ')
+                    if not self._is_vertex_reachable(source):
+                        return False, []
                 return all(
                     self._is_arc_traversable(other_arc) 
                     for other_arc in non_epsilon_arcs
@@ -101,12 +114,54 @@ class ModifiedActivityExtraction:
             if current_c_attr != '0':
                 return True, []
             else:
+                # For epsilon traversal, check if non-epsilon arcs are reachable
+                for arc in non_epsilon_arcs:
+                    source, _ = self._safe_get_arc(arc).split(', ')
+                    if not self._is_vertex_reachable(source):
+                        return False, []
                 return all(
                     self._is_arc_traversable(other_arc) 
                     for other_arc in non_epsilon_arcs
                 ), non_epsilon_arcs
 
         return False, []
+
+    def _is_vertex_reachable(self, vertex, depth=0):
+        """
+        Enhanced reachability check that considers the contraction path
+        with depth limitation to prevent excessive recursion
+        """
+        # Prevent excessive recursion
+        if depth > len(self.R) * 2:
+            return False
+
+        if vertex == self.source:
+            return True
+        
+        # Check if vertex is in contraction path
+        for path in self.contraction_path.values():
+            if vertex in [v.split(', ')[0] for v in path.get('contracted_path', [])]:
+                return True
+        
+        # Tracked sources to prevent repeated checks
+        checked_sources = set()
+        
+        for arc in self.R:
+            arc_str = self._safe_get_arc(arc)
+            source, target = arc_str.split(', ')
+            
+            if target == vertex:
+                if arc_str in self.traversed_arcs:
+                    return True
+                
+                # Prevent checking the same source multiple times
+                if source not in checked_sources:
+                    checked_sources.add(source)
+                    # Pass depth to control recursion
+                    if self._is_vertex_reachable(source, depth + 1):
+                        return True
+        
+        return False
 
     def extract_activity_profiles(self):
         """Extract activity profiles with proper join handling"""
@@ -141,12 +196,13 @@ class ModifiedActivityExtraction:
         return self.activity_profiles
 
     def _extract_profile_with_joins(self, contract_arc=None):
-        """Core traversal algorithm with proper join handling"""
+        """Core traversal algorithm with proper join handling and deadlock detection"""
         activity_profile = {
             'S': {},
             'deadlock': False,
             'successful': False,
-            'sink_timestep': None
+            'sink_timestep': None,
+            'unreachable_joins': set()
         }
 
         current_vertex = self.source
@@ -172,10 +228,23 @@ class ModifiedActivityExtraction:
             # Find traversable arcs with join constraints
             traversable_arcs = []
             required_arcs_map = {}
+            deadlock_detected = False
             
             for arc in current_arcs:
                 arc_str = self._safe_get_arc(arc)
                 _, next_vertex = arc_str.split(', ')
+
+                # Check if target join has any unreachable incoming arcs
+                if next_vertex in self.join_vertices:
+                    join_info = self.join_classifications[next_vertex]
+                    for inc_arc in join_info['incoming_arcs']:
+                        inc_source, _ = self._safe_get_arc(inc_arc).split(', ')
+                        if not self._is_vertex_reachable(inc_source):
+                            activity_profile['unreachable_joins'].add(next_vertex)
+                            deadlock_detected = True
+                            break
+                    if deadlock_detected:
+                        break
 
                 is_traversable, required_arcs = self._check_join_traversability(arc, next_vertex)
                 
@@ -185,9 +254,12 @@ class ModifiedActivityExtraction:
                         traversable_arcs.append(arc)
                         required_arcs_map[arc_str] = required_arcs
 
-            # Deadlock check
-            if not traversable_arcs:
+            # Immediate deadlock handling
+            if deadlock_detected or not traversable_arcs:
                 activity_profile['deadlock'] = True
+                # Only keep what we've actually traversed
+                if not activity_profile['S']:
+                    activity_profile['S'] = {}
                 break
 
             # Select first traversable arc and its required arcs
@@ -196,14 +268,15 @@ class ModifiedActivityExtraction:
             _, next_vertex = arc_str.split(', ')
             required_arcs = required_arcs_map.get(arc_str, [])
 
-            # Update traversal tracking
+            # Create timestep entry
+            activity_profile['S'][timestep] = set()
+
+            # Record main arc
             self.arc_traversal_count[arc_str] += 1
             self.traversed_arcs.add(arc_str)
+            activity_profile['S'][timestep].add(arc_str)
             
-            # Record main arc
-            activity_profile['S'][timestep] = {arc_str}
-            
-            # Record required arcs at same timestep if any
+            # Record required arcs at same timestep
             for req_arc in required_arcs:
                 req_arc_str = self._safe_get_arc(req_arc)
                 if req_arc_str not in self.traversed_arcs:
@@ -221,15 +294,18 @@ class ModifiedActivityExtraction:
 
             timestep += 1
 
+        # Final deadlock check
         if current_vertex != self.sink:
             activity_profile['deadlock'] = True
+            # Clean up empty timesteps
+            activity_profile['S'] = {k:v for k,v in activity_profile['S'].items() if v}
 
         return activity_profile
 
     def _is_arc_traversable(self, arc):
         """Check arc traversability with l-attribute constraint"""
         arc_str = self._safe_get_arc(arc)
-        l_attribute = int(arc.get('l-attribute', 0))
+        l_attribute = int(arc.get('l-attribute'))
         current_traversal_count = self.arc_traversal_count[arc_str]
         return current_traversal_count < l_attribute
 

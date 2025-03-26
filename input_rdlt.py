@@ -1,4 +1,6 @@
 from pathlib import Path
+import utils
+from cycle import Cycle
 
 class Input_RDLT:
     """
@@ -106,20 +108,20 @@ class Input_RDLT:
         self.L_attribute_list = [i['l-attribute'] for i in R_list]
 
         # Print the extracted data for debugging
-        print('-' * 60)
-        print(f"Input RDLT: ")
+        print(f"\nInput RDLT: ")
         print('-' * 20)
         print(f"Arcs List ({len(self.Arcs_List)}): ", self.Arcs_List)
         print(f"Vertices List ({len(self.Vertices_List)}): ", self.Vertices_List)
         print(f"C-attribute List ({len(self.C_attribute_list)}): ", self.C_attribute_list)
         print(f"L-attribute List ({len(self.L_attribute_list)}): ", self.L_attribute_list)
-        print('-' * 20)
-        print(f"RBS components:")
-        print('-' * 20)
-        print(f"Centers ({len(self.Centers_list)}): ", self.Centers_list)
-        print(f"In ({len(self.In_list)}): ", self.In_list)
-        print(f"Out ({len(self.Out_list)}): ", self.Out_list)
-        print('-' * 60)
+        if self.Centers_list:
+            print('-' * 20)
+            print(f"RBS components:")
+            print('-' * 20)
+            print(f"Centers ({len(self.Centers_list)}): ", self.Centers_list)
+            print(f"In ({len(self.In_list)}): ", self.In_list)
+            print(f"Out ({len(self.Out_list)}): ", self.Out_list)
+        print('=' * 60)
 
         # Process the RDLT structure for R2, R3, etc., based on centers and arcs
         rdlts_raw = [{f"R{i + 2}-{self.Centers_list[i]}": []} for i in range(len(self.Centers_list))]
@@ -181,12 +183,73 @@ class Input_RDLT:
 
         self.user_input_to_evsa = [final_transform_R(rdlt) for rdlt in rdlts]
 
-        # Print final results for debugging
-        print("Extracted RDLT Data (dict):")
-        print('-' * 30)
-        for rdlt in self.user_input_to_evsa:
-            print(rdlt)
+        # Compute eRU for R1
+        R1 = self.getR('R1')
+        if R1:
+            self._compute_eRU(R1)
 
+    def _compute_eRU(self, R1):
+        """
+        Computes the eRU values for arcs in R1 based on cycle detection.
+
+        Parameters:
+            - R1 (list): The R1 structure containing arcs and their attributes.
+        """
+        # Detect cycles in R1
+        cycle_instance = Cycle(R1)
+        cycle_R1 = cycle_instance.evaluate_cycle()
+
+        if not cycle_R1:
+            print("\nNo cycles detected in R1.\n")
+            print('-' * 30)
+        else:
+            # Iterate over each cycle
+            for cycle_data in cycle_R1:
+                cycle_arcs = cycle_data['cycle']
+                cycle_l_attributes = []
+
+                # Iterate over the arcs in the cycle
+                for cycle_arc in cycle_arcs:
+                    r_id, arc_name = cycle_arc.split(": ")
+                    arc_name = arc_name.strip()
+
+                    # Get the actual arc from R1 using r-id
+                    actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                    if actual_arc:
+                        # Find the matching arc in R1
+                        matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                        if matching_arc:
+                            l_attribute = matching_arc.get('l-attribute', None)
+                            if l_attribute is not None:
+                                cycle_l_attributes.append(int(l_attribute))  # Convert to int
+                            else:
+                                print(f"Warning: 'l-attribute' not found for arc {actual_arc}")
+                        else:
+                            print(f"Warning: No matching arc found for {actual_arc} in R1")
+                    else:
+                        print(f"Warning: No arc found in R1 for r-id {r_id}")
+
+                # Compute the critical arc value (minimum l-attribute in the cycle)
+                ca = min(cycle_l_attributes) if cycle_l_attributes else None
+
+                if ca is not None:
+                    # Update eRU for arcs in the cycle
+                    for cycle_arc in cycle_arcs:
+                        r_id, arc_name = cycle_arc.split(": ")
+                        arc_name = arc_name.strip()
+
+                        # Get the actual arc from R1 using r-id
+                        actual_arc = utils.get_arc_from_rid(r_id, R1)
+
+                        if actual_arc:
+                            # Find the matching arc in R1
+                            matching_arc = next((r for r in R1 if r['arc'] == actual_arc), None)
+                            if matching_arc:
+                                # Update eRU to the critical arc's 'ca' value
+                                matching_arc['eRU'] = ca
+    
+    # get only R1 components for EVSA processing
     def getRs(self):
         """
         Fetches all RDLT structures except for R1.
@@ -195,8 +258,9 @@ class Input_RDLT:
             list: List of RDLT structures (R2, R3, etc.).
         """
         return [R for R in self.user_input_to_evsa if "R1" not in R.keys()]
-
-    def getR(self, R):
+    
+    # get only R2 components for EVSA processing
+    def getR(self, R): 
         """
         Fetches a specific RDLT structure (e.g., R1, R2, etc.) by its identifier.
 

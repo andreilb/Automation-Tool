@@ -1,448 +1,369 @@
+import copy
+from collections import defaultdict
 import utils
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('extraction_debug.log')
-    ]
-)
-
-logger = logging.getLogger('ModifiedActivityExtraction')
 
 class ModifiedActivityExtraction:
-    def __init__(self, R, contraction_path, violating_arcs, failed_contractions, in_list=None, out_list=None):
+    def __init__(self, R, contraction_path=None, R2=None, out_list=None, cycle_list=None):
+        """
+        Initialize the advanced activity extraction with enhanced cycle and path handling.
+        
+        Args:
+            R (list): Reduced Direct Labeled Transition system
+            contraction_path (list): Sequence of contraction paths
+            R2 (list): Secondary transition system
+            out_list (list): List of out-bridges
+            cycle_list (list): List of cycles with their L-attributes
+        """
         self.R = R
-        self.contraction_path = contraction_path
-        self.violating_arcs = violating_arcs
-        self.failed_contractions = failed_contractions
-        self.activity_profile = []
-        self.T = {
-            arc_data["arc"]: {
-                "r-id": arc_data["r-id"],
-                "check": 0,
-                "traverse": 0,
-                "count": 0,
-                "l-attribute": int(arc_data["l-attribute"]),
-                "c-attribute": arc_data["c-attribute"]
-            }
-            for arc_data in self.R
-        }
-
-        self.untraversed_violations = {}
-
-        self.in_list = in_list if in_list else []
-        self.out_list = out_list if out_list else []
-
-        self.graph = utils.build_graph(R)
+        self.R2 = R2 or []
+        self.contraction_path = contraction_path or []
+        self.out_list = out_list or []
+        self.cycle_list = cycle_list or []
+        # Initialize activity_profiles as an empty dictionary
+        self.activity_profiles = {}
+        # Enhanced tracking for time vectors
+        self.time_vectors = self._initialize_time_vectors()
+        
+        # Core tracking structures
         self.source, self.sink = utils.get_source_and_target_vertices(self.R)
-        self.visited_nodes = set()
-        self.parent_nodes = {}
-        self.current_timestep = 0
+
+    def _initialize_time_vectors(self):
+        """
+        Initialize time vectors for each arc based on L-attributes.
         
-        logger.info(f"Initialized ModifiedActivityExtraction")
-        logger.info(f"Source: {self.source}, Sink: {self.sink}")
-        logger.info(f"Contraction Path: {self.contraction_path}")
-        logger.info(f"Violating Arcs: {self.violating_arcs}")
+        Returns:
+            dict: Time vectors for each arc with zero initialization
+        """
+        time_vectors = {}
+        for arc_data in self.R:
+            arc = arc_data['arc']
 
-    def traverse_and_update(self, x, y):
-        arc_name = f"{x}, {y}"
-        self.current_timestep += 1
-        t_check = self.current_timestep
-
-        logger.debug(f"Checking arc {arc_name} at timestep {t_check}...")
-
-        if arc_name not in self.T:
-            logger.warning(f"Arc {arc_name} not found in T dictionary")
-            return None  # Ensure we only operate on valid arcs
-
-        # Ensure `self.RBS` exists before using it
-        if hasattr(self, "RBS") and arc_name in self.out_list:
-            logger.debug(f"Resetting T-values for out-bridge arcs related to {arc_name}...")
-            for reset_arc in self.T:
-                if reset_arc in self.RBS:  # Ensure it's in the Restricted Bridge Set
-                    self.T[reset_arc]["check"] = 0
-                    self.T[reset_arc]["traverse"] = 0
-
-        self.T[arc_name]['check'] = t_check
-
-        arc_data = next((arc for arc in self.R if arc['arc'] == arc_name), None)
-        if not arc_data:
-            logger.warning(f"Warning: Arc {arc_name} not found in RDLT.")
-            return None
-
-        if self.T[arc_name]['count'] >= arc_data['l-attribute']:
-            logger.warning(f"Arc {arc_name} has reached its L-value limit. Cannot traverse.")
-            return None
-
-        self.T[arc_name]['count'] += 1
-        t_traverse = self.current_timestep
-        self.T[arc_name]['traverse'] = t_traverse
-
-        while len(self.activity_profile) < t_traverse:
-            self.activity_profile.append([])
-
-        self.activity_profile[t_traverse - 1].append((x, y))
-        logger.info(f"Arc {arc_name} traversed at timestep {t_traverse}. Traversal count: {self.T[arc_name]['count']}")
-
-        self.visited_nodes.add(y)
-        self.parent_nodes[y] = x
-
-        return y
-
+            l_attribute = int(arc_data.get('l-attribute', ))
+            
+            # Ensure l_attribute is a positive integer
+            l_attribute = max(1, l_attribute)
+            
+            time_vectors[arc] = [0] * l_attribute
+        return time_vectors
+    
+    
     def extract_activity_profile(self):
-        self.visited_nodes.add(self.source)
-        current_nodes = {self.source}
-        self.activity_profile = []
-        
-        logger.info(f"Starting extraction from source node: {self.source}")
-        
-        while current_nodes and not (len(current_nodes) == 1 and self.sink in current_nodes):
-            logger.debug(f"Current nodes: {current_nodes}")
-            
-            # Step 1: Check outgoing arcs from current nodes
-            checked_arcs = set()
-            for node in current_nodes:
-                outgoing_arcs = [f"{node}, {neighbor}" for neighbor in self.graph.get(node, [])]
-                for arc in outgoing_arcs:
-                    if arc in self.T and self.T[arc]['check'] == 0:
-                        self.current_timestep += 1
-                        self.T[arc]['check'] = self.current_timestep
-                        checked_arcs.add(arc)
-                        logger.debug(f"Checking arc {arc} at timestep {self.current_timestep}")
-
-            # Step 2: Find immediately traversable arcs (can be traversed in same timestep as checked)
-            immediate_traversable = {}
-            for arc in checked_arcs:
-                if self.is_immediately_traversable(arc):
-                    x, y = arc.split(", ")
-                    if y not in immediate_traversable:
-                        immediate_traversable[y] = []
-                    immediate_traversable[y].append(arc)
-                    logger.debug(f"Arc {arc} can be traversed immediately in the same timestep")
-            
-            # Step 3: Traverse immediately traversable arcs
-            if immediate_traversable:
-                timestep_activities = []
-                next_nodes = set()
-                
-                # Use same prioritization logic
-                def prioritization_key(target):
-                    has_contraction_arc = any(arc in self.contraction_path for arc in immediate_traversable[target])
-                    return (
-                        target == self.sink,
-                        has_contraction_arc,
-                        len(immediate_traversable[target])
-                    )
-                
-                # Select highest priority target
-                if immediate_traversable:  # Check if not empty
-                    selected_target = max(immediate_traversable.keys(), key=prioritization_key)
-                    selected_arcs = immediate_traversable[selected_target]
-                    
-                    # Further sort selected arcs to prioritize contraction path
-                    selected_arcs.sort(key=lambda a: a not in self.contraction_path)
-                    
-                    logger.info(f"Selected target node for immediate traversal: {selected_target}")
-                    logger.info(f"Selected arcs for immediate traversal: {selected_arcs}")
-                    
-                    # Traverse all selected arcs in the same timestep they were checked
-                    for arc in selected_arcs:
-                        x, y = arc.split(", ")
-                        # Use the check timestep as the traverse timestep
-                        traverse_timestep = self.T[arc]['check']
-                        self.T[arc]['traverse'] = traverse_timestep
-                        self.T[arc]['count'] += 1
-                        
-                        # Ensure activity_profile has enough elements
-                        while len(self.activity_profile) < traverse_timestep:
-                            self.activity_profile.append([])
-                        
-                        # Add to the activity profile at the appropriate timestep (index is timestep-1)
-                        self.activity_profile[traverse_timestep-1].append((x, y))
-                        
-                        next_nodes.add(y)
-                        self.visited_nodes.add(y)
-                        logger.info(f"Immediately traversing arc {arc} at the same timestep {traverse_timestep}")
-                        if arc in self.contraction_path:
-                            logger.info(f"Traversed contraction path arc: {arc}")
-                    
-                    current_nodes = next_nodes
-                    continue  # Skip to next iteration since we've already processed these nodes
-
-            # Step 4: If no immediate traversal, find traversable arcs for next timestep
-            traversable_arcs = []
-            for arc in checked_arcs:
-                if arc not in immediate_traversable.get(arc.split(", ")[1], []) and self.can_traverse(arc):
-                    traversable_arcs.append(arc)
-            
-            # Group by target vertex
-            traversable_groups = {}
-            for arc in traversable_arcs:
-                x, y = arc.split(", ")
-                if y not in traversable_groups:
-                    traversable_groups[y] = []
-                traversable_groups[y].append(arc)
-            
-            # Step 5: Traverse grouped arcs in next timestep
-            if traversable_groups:
-                self.current_timestep += 1
-                timestep_activities = []
-                next_nodes = set()
-                
-                def prioritization_key(target):
-                    has_contraction_arc = any(arc in self.contraction_path for arc in traversable_groups[target])
-                    return (
-                        target == self.sink,
-                        has_contraction_arc,
-                        len(traversable_groups[target])
-                    )
-                
-                selected_target = max(traversable_groups.keys(), key=prioritization_key)
-                selected_arcs = traversable_groups[selected_target]
-                
-                selected_arcs.sort(key=lambda a: a not in self.contraction_path)
-                
-                logger.info(f"Selected target node for next timestep: {selected_target}")
-                logger.info(f"Selected arcs for next timestep: {selected_arcs}")
-                
-                for arc in selected_arcs:
-                    x, y = arc.split(", ")
-                    self.T[arc]['traverse'] = self.current_timestep
-                    self.T[arc]['count'] += 1
-                    timestep_activities.append((x, y))
-                    next_nodes.add(y)
-                    self.visited_nodes.add(y)
-                    logger.info(f"Traversing arc {arc} at timestep {self.current_timestep}")
-                    if arc in self.contraction_path:
-                        logger.info(f"Traversed contraction path arc: {arc}")
-                
-                if timestep_activities:
-                    self.activity_profile.append(timestep_activities)
-                current_nodes = next_nodes
-            else:
-                # If no traversable arcs found, check for deadlock
-                logger.warning("No traversable arcs found - potential deadlock")
-                return self.detect_deadlock()
-        
-        logger.info(f"Extraction completed successfully! Sink {self.sink} has been reached.")
-        return self.activity_profile
-
-    def is_immediately_traversable(self, arc):
         """
-        Check if an arc can be traversed in the same timestep it was checked.
-        This is possible if the arc is unconstrained according to the definition.
+        Extract activity profile based on the comprehensive mathematical model.
+        
+        Returns:
+            dict: Detailed activity profile with rigorous traversal tracking
         """
-        if not self.can_traverse(arc):
+        activity_profile = {
+            'S': {},              # Timestep-grouped arcs
+            'time_vectors': self.time_vectors,  # Track arc time vectors
+            'deadlock': False,    # Deadlock flag
+            'successful': False,  # Successful traversal flag
+            'sink_timestep': None  # Timestep when sink is reached
+        }
+        
+        R_copy = copy.deepcopy(self.R)
+        current_vertex = self.source
+        timestep = 1
+        visited_stack = [self.source]
+        
+        # Tracking unconstrained arc selection
+        def is_unconstrained_arc(current_arc, competing_arcs):
+            """
+            Formal unconstrained arc evaluation based on mathematical definition.
+            
+            Args:
+                current_arc (str): Current arc being considered
+                competing_arcs (list): Other arcs targeting the same vertex
+            
+            Returns:
+                bool: Whether the arc is unconstrained
+            """
+            current_end = current_arc.split(', ')[1]
+            current_arc_data = next(
+                (a for a in R_copy if a['arc'] == current_arc), 
+                None
+            )
+            
+            if not current_arc_data:
+                return False
+            
+            current_c_attr = current_arc_data.get('c-attribute', '0')
+            
+            for competing_arc in competing_arcs:
+                # Condition 1: C-attribute compatibility
+                competing_arc_data = next(
+                    (a for a in R_copy if a['arc'] == competing_arc), 
+                    None
+                )
+                
+                if not competing_arc_data:
+                    continue
+                
+                competing_c_attr = competing_arc_data.get('c-attribute', '0')
+                
+                # Condition 1: C-attribute matching
+                if competing_c_attr not in {'0', current_c_attr}:
+                    continue
+                
+                # Condition 2: Traversal Count Verification
+                current_time_vector = self.time_vectors.get(current_arc, [])
+                competing_time_vector = self.time_vectors.get(competing_arc, [])
+                
+                current_traversals = len([t for t in current_time_vector if t >= 1])
+                competing_traversals = len([t for t in competing_time_vector if t >= 1])
+                
+                max_competing_l_attr = len(competing_time_vector)
+                
+                # Condition 2: Traversal count consistency
+                if (current_traversals <= competing_traversals <= max_competing_l_attr):
+                    return True
+                
+                # Condition 3: Epsilon handling
+                if (
+                    current_c_attr == '0' and 
+                    competing_c_attr in self.R_sigma and 
+                    any(competing_time_vector)
+                ):
+                    return True
+            
             return False
+        
+        max_iterations = 500
+        iteration = 0
+        
+        while current_vertex != self.sink and iteration < max_iterations:
+            iteration += 1
             
-        x, y = arc.split(", ")
-        arc_data = self.T[arc]
-        c_attribute = arc_data['c-attribute']
+            # Identify arcs starting from current vertex
+            current_arcs = [
+                arc_data['arc'] for arc_data in R_copy 
+                if arc_data['arc'].startswith(f"{current_vertex}, ")
+            ]
+            
+            # Identify competing arcs for each potential arc
+            potential_arcs = []
+            for current_arc in current_arcs:
+                end_vertex = current_arc.split(', ')[1]
+                competing_arcs = [
+                    arc for arc in current_arcs 
+                    if arc.split(', ')[1] == end_vertex
+                ]
+                
+                # Check unconstrained arc conditions
+                if is_unconstrained_arc(current_arc, competing_arcs):
+                    potential_arcs.append(current_arc)
+            
+            # Deadlock handling
+            if not potential_arcs:
+                if visited_stack:
+                    current_vertex = visited_stack.pop()
+                    continue
+                
+                activity_profile['deadlock'] = True
+                break
+            
+            # Select first potential arc
+            current_arc = potential_arcs[0]
+            _, end_vertex = current_arc.split(', ')
+            
+            # Update time vector
+            time_vector = self.time_vectors.get(current_arc, [])
+            max_time = max(
+                [max(self.time_vectors.get(other_arc, [0])) for other_arc in 
+                 [arc for arc in R_copy if arc['arc'].endswith(f", {end_vertex}")]
+                ] or [0]
+            )
+            
+            # Find first zero in time vector
+            zero_index = time_vector.index(0) if 0 in time_vector else len(time_vector)
+            time_vector[zero_index] = max_time + 1
+            
+            # Update activity profile
+            if timestep not in activity_profile['S']:
+                activity_profile['S'][timestep] = []
+            activity_profile['S'][timestep].append(current_arc)
+            
+            # Update current state
+            current_vertex = end_vertex
+            visited_stack.append(current_vertex)
+            
+            # Increment timestep
+            timestep += 1
         
-        # Get all incoming arcs to y
-        incoming_arcs = [a for a in self.T if a.endswith(f", {y}")]
+        # Finalize activity profile
+        if current_vertex == self.sink:
+            activity_profile['successful'] = True
+            activity_profile['sink_timestep'] = timestep - 1
         
-        # Check if arc is unconstrained based on the three conditions from Definition 21
+        return activity_profile
+    
+    def _is_arc_traversable(self, arc, R, activity_profile, traversed_arcs, current_timestep):
+        """
+        Determine if an arc is traversable based on join type and current activity profile.
         
-        # Condition 1: All other incoming arcs have c-attribute of empty or same as current arc
-        for other_arc in incoming_arcs:
-            if other_arc != arc:
-                other_c = self.T[other_arc]['c-attribute']
-                # If other arc has different non-empty c-attribute, this arc isn't immediately traversable
-                if other_c != "0" and other_c != c_attribute:
-                    return False
+        Args:
+            arc (str): The arc to check for traversability
+            R (list): Reduced Direct Labeled Transition system
+            activity_profile (dict): Current activity profile
+            traversed_arcs (set): Set of already traversed arcs
+            current_timestep (int): Current timestep
         
-        # Condition 2: Traversal count is within limits for all type-alike arcs
-        for other_arc in incoming_arcs:
-            if other_arc != arc:
-                other_count = self.T[other_arc]['count']
-                other_limit = self.T[other_arc]['l-attribute']
-                # If other arc's traversal count exceeds current arc's, this arc isn't immediately traversable
-                if other_count > arc_data['count'] and other_count < other_limit:
-                    return False
+        Returns:
+            bool: Whether the arc is traversable
+        """
+        # Prevent re-traversing an arc
+        if arc in traversed_arcs:
+            return False
         
-        # Condition 3: Special case for empty c-attribute with previously traversed arcs
-        if c_attribute == "0":
-            for other_arc in incoming_arcs:
-                if other_arc != arc:
-                    other_c = self.T[other_arc]['c-attribute']
-                    if other_c != "0" and self.T[other_arc]['traverse'] > 0:
-                        return True
+        start, end = arc.split(', ')
         
-        # If all conditions pass, arc is immediately traversable
-        logger.debug(f"Arc {arc} is immediately traversable (can be traversed in same timestep as checked)")
-        return True
-
-    def is_reachable(self, start, target):
-        from collections import deque
-        queue = deque([start])
-        visited = set()
-
-        while queue:
-            node = queue.popleft()
-            if node == target:
+        # Find all incoming arcs to the end vertex
+        incoming_arcs = [a['arc'] for a in R if a['arc'].endswith(f", {end}")]
+        
+        # If no other incoming arcs, always traversable
+        if len(incoming_arcs) <= 1:
+            return True
+        
+        # Determine join type
+        join_type = self._determine_join_type(end, R)
+        
+        # Get c-attributes for all incoming arcs
+        c_attributes = {}
+        for inc_arc in incoming_arcs:
+            inc_arc_data = next((a for a in R if a['arc'] == inc_arc), None)
+            c_attributes[inc_arc] = inc_arc_data.get('c-attribute', '0')
+        
+        # Current arc's c-attribute
+        current_arc_data = next((a for a in R if a['arc'] == arc), None)
+        current_c_attr = current_arc_data.get('c-attribute', '0')
+        
+        # OR-JOIN: Always traversable if first incoming arc or all attributes identical
+        if join_type == "OR-JOIN":
+            return True
+        
+        # AND-JOIN: All other non-epsilon arcs must be checked
+        elif join_type == "AND-JOIN":
+            # Ensure all non-epsilon arcs have been checked
+            return all(
+                inc_arc in activity_profile['checks'] 
+                for inc_arc in incoming_arcs 
+                if inc_arc != arc and c_attributes[inc_arc] != '0'
+            )
+        
+        # MIX-JOIN: More complex traversability rules
+        elif join_type == "MIX-JOIN":
+            # If current arc is non-epsilon
+            if current_c_attr != '0':
+                # No need to check epsilon arcs
                 return True
-            if node in visited:
-                continue
-            visited.add(node)
-            for neighbor in self.graph.get(node, []):
-                if neighbor not in visited:
-                    queue.append(neighbor)
-
+            
+            # If current arc is epsilon, check non-epsilon arcs first
+            return all(
+                inc_arc in activity_profile['checks'] 
+                for inc_arc in incoming_arcs 
+                if inc_arc != arc and c_attributes[inc_arc] != '0'
+            )
+        
         return False
     
-    def is_required_for_connectivity(self, arc):
-        x, y = arc.split(", ")
-
-        # Check if multiple incoming arcs are necessary for y to be reached
-        incoming_arcs = [f"{src}, {y}" for src in self.graph if f"{src}, {y}" in self.T]
-
-        # If more than one incoming arc is needed for y to be reachable, return True
-        if len(incoming_arcs) > 1 and all(self.T[a]['check'] > 0 for a in incoming_arcs):
-            return True
-
-        return False
-
-    def can_traverse(self, arc):
-        x, y = arc.split(", ")
-
-        if x not in self.visited_nodes:
-            logger.debug(f"Cannot traverse {arc} because {x} has not been reached.")
-            return False  
-
-        arc_data = self.T[arc]
-
-        if arc_data["count"] >= arc_data["l-attribute"]:
-            logger.debug(f"Arc {arc} exceeded l-attribute limit. Cannot traverse.")
-            return False
-
-        incoming_arcs = [a for a in self.T if a.endswith(f", {y}")]
-
-        relevant_incoming_arcs = []
-        for other_arc in incoming_arcs:
-            if other_arc != arc:
-                other_c = self.T[other_arc]['c-attribute']
-                arc_c = arc_data['c-attribute']
-                if other_c != "0" and other_c != arc_c:
-                    relevant_incoming_arcs.append(other_arc)
-
-        unchecked_incoming = [a for a in relevant_incoming_arcs if self.T[a]["check"] == 0]
+    def _determine_join_type(self, vertex, R):
+        """
+        Determine the join type for a vertex based on c-attributes.
         
-        if unchecked_incoming:
-            logger.debug(f"Cannot traverse {arc}. Not all relevant incoming arcs to {y} have been checked: {unchecked_incoming}")
-            return False  
-
-        traversed_incoming_arcs = [a for a in incoming_arcs if self.T[a]['traverse'] > 0]
-
-        if traversed_incoming_arcs:
-            logger.debug(f"Since {traversed_incoming_arcs} was traversed, {arc} must also traverse now.")
-            return True  
-
-        return True  
-
-    def detect_deadlock(self):
-        logger.error(f"\nDeadlock occurred. Sink {self.sink} was NOT reached.")
-
-        # Find last checked timestep
-        last_checked_timestep = max((T['check'] for T in self.T.values() if T['check'] > 0), default=0)
-        deadlock_arcs = {arc: T for arc, T in self.T.items() if T['check'] == last_checked_timestep and T['traverse'] == 0}
-
-        if deadlock_arcs:
-            logger.error("\nThe following arcs caused the deadlock:")
-            for arc, t_values in deadlock_arcs.items():
-                logger.error(f"  - Arc {arc}: T[check={t_values['check']}, traverse={t_values['traverse']}]")
-                
-                # Check if the deadlock arc is in violating_arcs
-                if arc in self.violating_arcs:
-                    logger.error(f"Violating arc {arc} is preventing traversal.")
-                    self.untraversed_violations[arc] = t_values
-
-        # Try alternative paths before fully giving up
-        alternative_found = False
-        for arc, values in deadlock_arcs.items():
-            x, y = arc.split(", ")
-            alt_paths = [f"{src}, {y}" for src in self.graph if f"{src}, {y}" in self.T and src != x]
-
-            for alt_arc in alt_paths:
-                if self.T[alt_arc]['check'] == 0 and self.can_traverse(alt_arc):
-                    logger.info(f"Trying alternative path {alt_arc} to avoid deadlock...")
-                    self.T[alt_arc]['check'] = self.current_timestep
-                    self.T[alt_arc]['traverse'] = self.current_timestep
-                    alternative_found = True
-                    break  
-
-        # If an alternative path was found, retry traversal once
-        if alternative_found:
-            logger.info("Retrying traversal after alternative path was found.")
-            return self.activity_profile  # Return current state instead of restarting traversal
-
-        logger.error("\nNo alternative paths available. Deadlock confirmed.")
+        Args:
+            vertex (str): The vertex to analyze
+            R (list): Reduced Direct Labeled Transition system
         
-        # Report violating arcs that might be causing problems
-        if self.untraversed_violations:
-            logger.error("\nCRITICAL: The following violating arcs prevented traversal:")
-            for arc, t_values in self.untraversed_violations.items():
-                logger.error(f"  - Violating arc {arc}: T[check={t_values['check']}, traverse={t_values['traverse']}]")
+        Returns:
+            str: Join type - 'OR-JOIN', 'AND-JOIN', or 'MIX-JOIN'
+        """
+        # Get incoming arcs to the vertex
+        incoming_arcs = [a for a in R if a['arc'].endswith(f", {vertex}")]
         
-        return self.activity_profile, self.T  # Final deadlock output
+        # Extract c-attributes, treating '0' as epsilon
+        c_attributes = [arc.get('c-attribute', '0') for arc in incoming_arcs]
+        
+        # Remove epsilon (zero) attributes to check core attributes
+        non_epsilon_attrs = [attr for attr in c_attributes if attr != '0']
+        
+        # Case 1: All attributes are identical (including all epsilon)
+        if len(set(c_attributes)) <= 1:
+            return "OR-JOIN"
+        
+        # Case 2: All non-epsilon attributes are different
+        if len(set(non_epsilon_attrs)) > 1:
+            return "AND-JOIN"
+        
+        # Case 3: Mixed epsilon and non-epsilon
+        return "MIX-JOIN"
+    
+    def _extract_out_bridge_arc(self, out_bridge):
+        """
+        Safely extract the arc from an out-bridge representation.
+        
+        Args:
+            out_bridge (str or dict): Out-bridge representation
+        
+        Returns:
+            str: Arc representation
+        """
+        # If it's already a string, return it
+        if isinstance(out_bridge, str):
+            return out_bridge
+        
+        # If it's a dictionary, try multiple ways to extract the arc
+        if isinstance(out_bridge, dict):
+            # Try getting 'arc' key
+            if 'arc' in out_bridge:
+                return out_bridge['arc']
+            
+            # If no 'arc' key, convert dictionary to string representation
+            return str(out_bridge)
+        
+        # If it's neither string nor dict, convert to string
+        return str(out_bridge)
+    
+    def print_activity_profile(self, activity_profile=None):
+        """
+        Print the activity profile in the specified Markdown format.
+        
+        Parameters:
+            activity_profile (dict, optional): The activity profile to print. 
+            If None, uses the most recently generated profile.
+        """
+        # If no activity profile provided, use the most recent one
+        if activity_profile is None:
+            # Get the most recent activity profile (last added to the dictionary)
+            if not self.activity_profiles:
+                print("No activity profiles available.")
+                return
+            activity_profile = list(self.activity_profiles.values())[-1]
+        
+        # Check if 'S' key exists in the activity profile
+        if 'S' not in activity_profile or not activity_profile['S']:
+            print("No timestep sets found in the activity profile.")
+            return
 
-    def print_activity_profile(self):
-        activity_sets = {}
-        for arc_name, values in self.T.items():
-            t_traverse = values['traverse']
-            if t_traverse > 0:
-                if t_traverse not in activity_sets:
-                    activity_sets[t_traverse] = set()
-                activity_sets[t_traverse].add(tuple(arc_name.split(", ")))
-
-        # Get original timesteps in sorted order
-        original_timesteps = sorted(activity_sets.keys())
+        # Print individual timestep sets with Markdown bold formatting
+        for timestep, arcs in sorted(activity_profile['S'].items()):
+            print(f"S({timestep}) = {set(arcs)}")
         
-        # Create a mapping from original to sequential timesteps
-        timestep_mapping = {orig: seq+1 for seq, orig in enumerate(original_timesteps)}
+        # Print summary set 
+        summary_set = {f"S({n})" for n in sorted(activity_profile['S'].keys())}
+        print(f"S = {summary_set}")
         
-        # Create new dictionary with sequential timesteps
-        sequential_sets = {timestep_mapping[t]: activity_sets[t] for t in original_timesteps}
-        
-        logger.info("\nACTIVITY PROFILE:\n")
-        for t in range(1, len(sequential_sets) + 1):
-            formatted_step = ", ".join(f"({x}, {y})" for x, y in sequential_sets[t])
-            logger.info(f"S({t}) = {{{formatted_step}}}")
-        
-        # Add summary line about reaching the sink
-        max_timestep = len(sequential_sets)
-        if self.sink in self.visited_nodes:
-            logger.info(f"\nS = {{S(1), S(2), ..., S({max_timestep})}}. Sink was reached at timestep {max_timestep}.")
+        # Print sink reaching information
+        if activity_profile.get('successful', False):
+            print(f"The sink was reached at timestep {activity_profile.get('sink_timestep', 'N/A')}.")
         else:
-            logger.info("\nSink was not reached. Extraction terminated due to deadlock or other issues.")
+            print("The activity profile did not successfully reach the sink.")
+    
+    def get_activity_profiles(self):
+        """
+        Returns the activity profiles for each violation.
         
-        return sequential_sets
-
-    def debug_state(self):
-        """Debug method to print current state of extraction"""
-        logger.debug("\n===== DEBUGGING CURRENT STATE =====")
-        logger.debug(f"Current timestep: {self.current_timestep}")
-        logger.debug(f"Visited nodes: {self.visited_nodes}")
-        
-        logger.debug("\nArc T-values:")
-        for arc, values in self.T.items():
-            if values['check'] > 0:  # Only show arcs that have been checked
-                logger.debug(f"Arc {arc}: check={values['check']}, traverse={values['traverse']}, count={values['count']}/{values['l-attribute']}")
-        
-        logger.debug("\nContraction path progress:")
-        for arc in self.contraction_path:
-            if arc in self.T:
-                status = "Traversed" if self.T[arc]['traverse'] > 0 else "Not traversed"
-                logger.debug(f"Path arc {arc}: {status}")
-        
-        logger.debug("\nViolating arcs status:")
-        for arc in self.violating_arcs:
-            if arc in self.T:
-                status = "Traversed" if self.T[arc]['traverse'] > 0 else "Not traversed"
-                logger.debug(f"Violating arc {arc}: {status}")
-        
-        logger.debug("===================================\n")
+        Returns:
+            dict: A dictionary with violations as keys and activity profiles as values.
+        """
+        return self.activity_profiles

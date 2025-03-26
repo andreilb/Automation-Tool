@@ -26,6 +26,7 @@ class AbstractArc:
         self.Centers_list = Centers_list
         self.Arcs_List = Arcs_List
         self.abstract_arcs = []
+        self.precomputed_paths = []
 
     def unique(self, Arcs_List):
         """
@@ -109,7 +110,7 @@ class AbstractArc:
                             # Filter paths to retain only those involving abstract vertices.
                             if len(path) > 1:
                                 abstract_arcs.append({
-                                    'r-id': f"R1-{len(abstract_arcs)}",  
+                                    'r-id': f"A-{len(abstract_arcs)}",  
                                     'arc': f'{path[0]}, {path[-1]}',
                                     'c-attribute': '0',
                                     'l-attribute': '0',
@@ -119,7 +120,7 @@ class AbstractArc:
                                 # For single arcs, ensure both vertices are abstract vertices.
                                 for arc in arcs:
                                     abstract_arcs.append({
-                                        'r-id': f"R1-{len(abstract_arcs)}",  
+                                        'r-id': f"A-{len(abstract_arcs)}",  
                                         'arc': arc,
                                         'c-attribute': '0',
                                         'l-attribute': '0',
@@ -153,11 +154,12 @@ class AbstractArc:
             paths = utils.find_all_paths(self.R2, in_vertex, in_vertex)
             if paths:
                 for path in paths:
+                    self.precomputed_paths.append(path)
                     if len(path) > 1:
                         filtered_arc = f'{in_vertex}, {in_vertex}'
                         if filtered_arc not in abstract_arcs:
                             abstract_arcs.append({
-                                'r-id': f"R1-{len(abstract_arcs)}",  
+                                'r-id': f"A-{len(abstract_arcs)}",  
                                 'arc': filtered_arc,
                                 'c-attribute': '0',  
                                 'l-attribute': '0',  
@@ -168,7 +170,7 @@ class AbstractArc:
             formatted_arc = f'{in_vertex}, {in_vertex}'
             if formatted_arc not in abstract_arcs:
                 abstract_arcs.append({
-                    'r-id': f"R1-{len(abstract_arcs)}",  
+                    'r-id': f"A-{len(abstract_arcs)}",  
                     'arc': formatted_arc,
                     'c-attribute': '0',  
                     'l-attribute': '0',  
@@ -194,42 +196,74 @@ class AbstractArc:
         for arc in abstract_arcs:
             # Split arc into start and end vertices.
             eRU = self.calculate_eRU(arc['arc'].split(', ')[0], arc['arc'].split(', ')[1])
+            # print("This is eRU:",eRU)
             # Derived l-attribute.
-            l_attribute = f'{eRU + 1}'
 
             # Assign attributes to the abstract arc. 
-            # Store the arc in dictionary format.
             finalized_arcs.append({
                 'r-id': arc['r-id'],
                 'arc': arc['arc'],
                 'c-attribute': '0',
-                'l-attribute': l_attribute,
-                'eRU': f'{eRU}'
+                'l-attribute': eRU + 1,
+                'eRU': eRU
             })
+
 
         return finalized_arcs
 
     def calculate_eRU(self, start, end):
         """
-        Calculate the effective reusability (eRU) for an abstract arc.
+        Compute the Expanded Reusability (eRU) for an abstract arc,
+        considering paths from `start` to `end` in R2.
 
         Args:
             - start (str): Start vertex of the arc.
             - end (str): End vertex of the arc.
 
         Returns:
-            int: Effective reusability (eRU) for the arc.
+            int: Expanded Reusability (eRU) for the arc.
         """
-        eRU = 0
-        # Loop through all in-bridge arcs to find relevant in-bridge vertices.
+        total_eRU = 0  # Initialize total eRU
+
+        # print(f"\nCalculating eRU for Abstract Arc ({start}, {end})")
+
+        # Identify the correct eRU from R2
+        path_eRU = 0  # Default
+        for r2_arc in self.R2:
+            if r2_arc['arc'] == f"{start}, {end}":
+                path_eRU = int(r2_arc.get('eRU', 0))
+                break  # Take the first found eRU
+
+        # Special handling for cycles (self-loops)
+        if start == end:
+            loop_eRU_values = []  # Store eRU values of all valid loops
+            for r2_arc in self.R2:
+                arc_start, arc_end = r2_arc['arc'].split(', ')
+                if arc_start == start or arc_end == end:  # Check arcs forming a loop
+                    loop_eRU_values.append(int(r2_arc.get('eRU', 0)))
+
+            if loop_eRU_values:
+                path_eRU = max(loop_eRU_values)  # Use the highest loop eRU
+                # print(f"Detected Loop eRU: {path_eRU}")
+
+        # print(f"Using eRU from R2: {path_eRU}")
+
+        # Sum contributions from in-bridges in R1
         for in_bridge in self.In_list:
-            in_vertex = in_bridge.split(', ')[1]    # Extract the target vertex of the in-bridge.
+            in_vertex = in_bridge.split(', ')[1]  # Extract the in-bridge target vertex
             
-            # Check if the start vertex of the current arc matches the in-bridge vertex.
             if start == in_vertex:
-                # Find the corresponding arc in R1 to retrieve its base l-attribute.
+                # print(f"In-Bridge Found: {in_bridge}")
+
+                # Find the corresponding L-attribute in R1
                 for arc in self.R1:
                     if arc['arc'] == in_bridge:
-                        eRU = int(arc['l-attribute']) + 1  # Update eRU using the formula: base_eRU * (reusability + 1).
-                        break
-        return eRU
+                        l_value = int(arc['l-attribute'])  # Get L-value
+                        reuse_value = path_eRU + 1  # Add 1 to eRU
+                        contribution = l_value * reuse_value
+                        total_eRU += contribution  # Accumulate eRU
+
+                        # print(f"Contribution: L={l_value}, eRU={path_eRU} → {contribution}")
+
+        # print(f"Final eRU for ({start}, {end}): {total_eRU}")
+        return total_eRU

@@ -44,7 +44,7 @@ def ProcessR2(R2):
     vertices_list = []
     c_attribute_list = []
     l_attribute_list = []
-    eRU_list = []  # This will hold the eRU values (as strings)
+    eRU_list = []
 
     # Process each arc in the merged arcs
     for r in merged_arcs:
@@ -79,7 +79,7 @@ def ProcessR2(R2):
             arc['eRU'] = '0'  # Set eRU to '0' by default (as string)
             eRU_list.append('0')  # Add '0' to eRU list
     else:
-        print(f"\nCycles detected: {len(cycle_R2)} cycles found.")
+        # print(f"\nCycles detected: {len(cycle_R2)} cycles found.")
         # Create a set to track processed arcs to avoid duplicate cycle detections
         processed_cycles = set()
 
@@ -144,13 +144,14 @@ def ProcessR2(R2):
             eRU_list.append('0')  # Append '0' as a string for missing eRU values
             
     # Print results for debugging
-    print(f"\nArcs List ({len(arcs_list)}): {arcs_list}")
+    print("R2:")
+    print('-' * 20)
+    print(f"Arcs List ({len(arcs_list)}): {arcs_list}")
     print(f"Vertices List ({len(vertices_list)}): {vertices_list}")
     print(f"C-attribute List ({len(c_attribute_list)}): {c_attribute_list}")
     print(f"L-attribute List ({len(l_attribute_list)}): {l_attribute_list}")
     print(f"eRU List ({len(eRU_list)}): {eRU_list}")
-    print(f"CAs_list ({len(cycle_arcs_with_min_l)}): , {cycle_arcs_with_min_l}")
-    print('-' * 60)
+    print('=' * 60)
 
     # Return the processed arcs
     return merged_arcs

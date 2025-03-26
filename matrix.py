@@ -30,7 +30,7 @@ class Matrix:
             - safe_vector: Matrix used for safeness verification.
             - join_safe_vector: Matrix used for JOIN-safeness verification.
         """
-    def __init__(self, R, Cycle_List):
+    def __init__(self, R, Cycle_List, In_List=None, Out_List=None):
         """
         Initialize the Matrix class with the RDLT data and a list of cycles.
 
@@ -40,12 +40,17 @@ class Matrix:
         """
         self._R_ = R
         self.Cycle_List = Cycle_List
+        self.In_List = In_List
+        self.Out_List = Out_List
         self.rdlt_structure = None
         self.matrix_operations = None
         self.join_safe_violations = []
         self.loop_safe_violations = []
+        self.join_safe_violations = []
         self.safeCA_violations = []
         self.l_safe_vector = None
+        self.matrix_data = []  # This should be populated during evaluation
+        self.violations = []  # This should be populated during evaluation
 
         # Extract arcs and graph from the RDLT structure
         self.Arcs_list = [r['arc'] for r in R]
@@ -135,16 +140,23 @@ class Matrix:
             arc = r['arc']
             x = r['arc'].split(', ')[0]
             y = r['arc'].split(', ')[1]
-            l = r['l-attribute']
+            l = str(r['l-attribute'])
             c = (str(r['c-attribute'])).replace('0', 'ε')  # Replace '0' with epsilon (ε)
-            eru = r['eRU']
+            eru = str(r['eRU'])
             op = str(r['c-attribute']) + "_" + y
             if op.startswith('0_'):
                 op = op.replace('0_', 'ε_') # Replace '0' with epsilon (ε)
-            matrix.append([arc, x, y, l, c, eru, 'cv_value' , op, 'cycle_vector', 'loopsafe', 'ocv_value', 'safeCA'])
+            r_id = r.get('r-id', None)
+            matrix.append([arc, x, y, l, c, eru, 'cv_value' , op, 'cycle_vector', 'loopsafe', 'ocv_value', 'safeCA', 'joinsafe',r_id])
         self.rdlt_structure = matrix  # Store the RDLT structure in the class
         # print("Structure Format:: ['arc', 'x', 'y', 'l-attribute', 'c-attribute', 'eRU', 'Out Cycle Vector', 'Loop-Safe', 'Safe CA']")
-        # print(f"RDLT Structure: {self.rdlt_structure}")  # Debug: Show the RDLT structure
+        columns_to_print = [0, 3, 5, 7]
+        print("\nRDLT Structure:")
+        for row in self.rdlt_structure:
+            # Create a new list containing only the specified columns
+            filtered_row = [row[col] for col in columns_to_print if col < len(row)]
+            print(filtered_row)
+        print('=' * 60)
         return matrix
 
     def initialize_matrices(self, n, m):
@@ -213,34 +225,63 @@ class Matrix:
         Returns:
             str: The result of the logical OR operation between A and B.
         """
-        # Handle cases where one of A or B is 0
-        if A == '0' or B == '0':
-            if A == '0' and B == '0':
-                return '0'  # Special case for both being '0'
-            return A if B == '0' else B  # If one is 0, return the other
-
         # Get the signs of A and B
         sign_A = self.sign(A)
         sign_B = self.sign(B)
 
-        # Now apply the logic for literal OR as defined
-        if sign_A == 1 or (sign_A == -1 and sign_B != 1) or (sign_A == 0 and sign_B == 0):
+        # Rule (1): a ∨ a = a
+        if A == B:
             return A
-        elif sign_B == 1 or (sign_B == -1 and sign_A == 0):
+
+        # Rule (2): a ∨ 0 = a
+        if sign_B == 0:
+            return A
+
+        # Rule (7): 0 ∨ a = a
+        if sign_A == 0:
             return B
-        else:
-            return A  # Default behavior (just return A in case of other cases)
+
+        # Rule (3): a ∨ −a = a
+        if A == f"-{B}" or B == f"-{A}":
+            return A if sign_A == 1 else B
+
+        # Rule (4): −a ∨ a = a
+        # Handled by Rule (3) since the logic is symmetric
+
+        # Rule (5): −a ∨ 0 = −a
+        # Handled by Rule (2) and Rule (7)
+
+        # Rule (6): −a ∨ −a = −a
+        # Handled by Rule (1)
+
+        # Rule (8): 0 ∨ 0 = 0
+        # Handled by Rule (2) and Rule (7)
+
+        # Rule (9): 0 ∨ −a = −a
+        # Handled by Rule (7)
+
+        # Rule (10): ε ∨ ε = ε
+        # Handled by Rule (1)
+
+        # Rule (11): ε ∨ 0 = ε
+        # Handled by Rule (2)
+
+        # Rule (12): 0 ∨ ε = ε
+        # Handled by Rule (7)
+
+        # Default behavior: return A if B is 0, otherwise return B
+        return A if sign_B == 0 else B
 
 
     def cycle_vector_operation(self, r):
         """
-        Handles the cycle vector operation for a given arc (r), updating the matrix with cycle and loop-safe values.
+        Handles the cycle vector operation for a given arc (r), updating the matrix with cycle values.
 
         Parameters:
             - r (list): The current arc data.
 
         Returns:
-            list: The updated arc with the new cycle and loop-safe values.
+            int: The cycle value calculated for this arc.
         """
         # Check if the arc is in the cycle or critical arcs list
         if r[0] in self.all_aic_list:
@@ -250,21 +291,15 @@ class Matrix:
                 B = 1  # Non-critical cycle
         else:
             B = 0  # Not part of a cycle
+        
+        cv = B
+        r[6] = cv
+        r[8] = self.elementMult(r[6], r[7])
+        # print("This is r[8] from cv", r[8])
+        cyc = r[8]
 
-        r[6] = B
-
-        # Calculate cycle value using element multiplication
-        cv = self.elementMult(r[6], r[7])
-        r[8] = cv
-
-        # Calculate loop-safe value using the loop_safe method
-        ls = self.loop_safe(r, r[8])  # Use loop_safe as a helper function
-
-        # Update the loop-safe value in r[9]
-        r[9] = ls  # Set the loop-safe value in column 9
-
-        # Return the updated arc with the new loop-safe value
-        return r
+        # Update the arc in the matrix but return only the cycle value
+        return cv, cyc
 
     
     def out_cycle_vector_operation(self, r):
@@ -278,169 +313,573 @@ class Matrix:
         Returns:
             list: The updated arc with the new out-cycle and safeness values.
         """
-        
-        if r[6] == -1:
-            # Find arcs with the same start vertex (r[1])
-            start_vertex = r[1]
-            matching_arcs = [arc for arc in self.rdlt_structure if arc[1] == start_vertex]  # Filter arcs with the same start vertex
-            
-            for arc in matching_arcs:
-                # Determine if outgoing arc is non-critical (cv = 1 or 0)
-                if arc[6] == 1:  # Non-critical arc
-                    ocv = self.elementMult(r[6], r[7])
-                elif arc[6] == -1:  # Critical arc
-                    ocv = self.elementMult(r[6], r[7])
-        # If the arc is not critical (cv != -1), set ocv = 0
-        else:
-            ocv = 0
+        # Step 1: Out-Cycle Detection
+        # Group arcs by their start vertices (r[1])
+        start_vertex_to_arcs = {}
+        for arc_data in self.rdlt_structure:
+            start_vertex = arc_data[1]
+            if start_vertex not in start_vertex_to_arcs:
+                start_vertex_to_arcs[start_vertex] = []
+            start_vertex_to_arcs[start_vertex].append(arc_data)
 
+        # Step 2: Determine ocv for the current arc `r`
+        ocv = 0  # Default value for arcs not in a cycle
+
+        if r[6] == -1:  # Arc is part of a critical cycle
+            start_vertex = r[1]
+            arcs_from_start = start_vertex_to_arcs.get(start_vertex, [])
+            
+            # Check if there is another outgoing arc with r[6] != -1
+            has_non_critical_outgoing = False
+            for arc in arcs_from_start:
+                if arc[0] != r[0] and arc[6] != -1:  # Exclude the current arc and check for non-critical outgoing arcs
+                    has_non_critical_outgoing = True
+                    break
+
+            if has_non_critical_outgoing:
+                ocv = 1  # Safe branch (OutCycleVector = 1)
+            else:
+                ocv = -1  # Potentially unsafe branch (OutCycleVector = -1)
+        elif r[0] in self.all_aic_list:  # Arc is part of a non-critical cycle
+            ocv = 1  # Safe branch (OutCycleVector = 1)
+        else:
+            ocv = 0  # Arc is not part of a cycle
+
+        # Step 3: Update OutCycleVector (r[10])
         r[10] = ocv
 
-        # Perform literalOR between CycleVector and OutCycleVector
-        safe_entry = self.literalOR(r[8], r[10])
-        
-        # Update the Safe Vector
-        r[11] = safe_entry
+        # Step 4: Multiply OutCycleVector with C-attribute (r[7])
+        r[10] = self.elementMult(r[10], r[7])
 
-        return r
+        # Step 5: Safe Vector Calculation
+        # Perform logical OR between CycleVector (r[8]) and OutCycleVector (r[10])
+        r[11] = self.literalOR(r[10], r[8])  # Update SafeCA vector (r[11])
 
+        # Step 6: Safeness Checking
+        safeCA = r[11]  # Assume safeness initially
 
+        return safeCA
+    
+    def is_bridge(self, arc):
+        """Determine if an arc is a bridge (exists in In_List or Out_List)."""
+        if self.In_List is not None and self.Out_List is not None:
+            if arc in self.In_List:
+                return True, "bridge"
+            if arc in self.Out_List:
+                return True, "bridge"
+        return False, "non-bridge"  # Make sure this is always reached
+    
     def join_safe(self):
         """
-        Determines if an arc satisfies the JOIN-safeness property. This function checks if the arc has both
-        an incoming and outgoing path that meet the required conditions.
+        Ensures join-safeness by enforcing:
+        1. Each outgoing arc of a split follows a single linear path to the join.
+        2. Intermediate vertices in the split-join path must not have external arcs.
+        3. All outgoing arcs of a split must lead to the same join.
+        4. Joins should only receive arcs from valid split paths.
+        5. Duplicate condition checks for join correctness.
+        6. Equal L-values enforcement for AND-JOINs.
+        7. Loop-safety validation.
 
-        Parameters:
-            - r (list): The arc data to check.
+        Updates the join_safe_violations list with detected violations.
 
         Returns:
-            int: 1 if the arc satisfies the JOIN-safeness condition, 0 otherwise.
+            bool: True if the structure is JOIN-safe, False otherwise.
         """
+        # Reset previous violations
+        self.join_safe_violations = []
         join_safe = True
 
-        # Identify vertices with multiple incoming (joins) and outgoing (splits) arcs
-        joins = [v for v in self._R_vertices if len([r for r in self._R_ if r['arc'].split(', ')[1] == v]) > 1]
-        splits = [v for v in self._R_vertices if len([r for r in self._R_ if r['arc'].split(', ')[0] == v]) > 1]
-        
-        # Set to track logged violations (to avoid duplication)
-        logged_violations = set()
+        # Create lookup dictionaries for incoming and outgoing arcs per vertex
+        vertex_incoming = {}
+        vertex_outgoing = {}
 
-        def analyze_split_join_path(path, split, join):
-            nonlocal join_safe
-            vertices_in_path = set(path)
+        for r in self._R_:
+            src, dst = r['arc'].split(', ')
+            if src not in vertex_outgoing:
+                vertex_outgoing[src] = []
+            vertex_outgoing[src].append(dst)
 
-            # Source and Target vertices are the split origin and Join
-            source_vertex = split
-            target_vertex = join
+            if dst not in vertex_incoming:
+                vertex_incoming[dst] = []
+            vertex_incoming[dst].append(src)
+
+        # Determine the bridge status of incoming arcs for each potential join
+        joins = []
+        for v, incoming in vertex_incoming.items():
+            # Check if vertex has more than 1 incoming arc and is not a source vertex
+            if len(incoming) > 1 and v not in self.source_vertices:
+                # Get bridge status for all incoming arcs
+                bridge_statuses = []
+                for src in incoming:
+                    arc = f"{src}, {v}"
+                    is_bridge, _ = self.is_bridge(arc)
+                    bridge_statuses.append(is_bridge)
+                
+                # Only consider as join if all incoming arcs have the same bridge status
+                if len(set(bridge_statuses)) == 1:
+                    joins.append(v)
+
+        splits = [v for v, outgoing in vertex_outgoing.items() if len(outgoing) > 1 and v not in self.target_vertices]
+
+        involved_arcs = set()
+        logged_violations = set()  # Composite key (arc + r-id) to prevent duplicate violations
+
+        def mark_arc_unsafe(arc, violation_type, details=None):
+            """Mark an arc as unsafe and record the violation with a composite key to avoid duplicates."""
+            arc_data = self.find_r_by_arc(arc)
+            r_id = arc_data.get('r-id') if arc_data else None
+            composite_key = f"{arc}|{r_id}"
+
+            if composite_key in logged_violations:
+                return False  # Avoid duplicate violation
+
+            violation = {
+                "violation": violation_type,
+                "arc": arc,
+                "r-id": r_id,
+                "split_origin": details.get("split_origin", "N/A"),
+                "join_vertex": details.get("join_vertex", "N/A"),
+            }
+
+            if details:
+                violation.update(details)
+
+            logged_violations.add(composite_key)
+            involved_arcs.add(arc)
+            self.join_safe_violations.append(violation)
+            return True
+
+        def find_all_paths(start, end):
+            """Find all paths from start to end vertex using DFS while preventing cycles."""
+            all_paths = []
+
+            def dfs(current, path, visited):
+                if current == end:
+                    all_paths.append(path[:])
+                    return
+                visited.add(current)
+
+                if current in vertex_outgoing:
+                    for next_vertex in vertex_outgoing[current]:
+                        if next_vertex not in visited:
+                            dfs(next_vertex, path + [next_vertex], visited.copy())
+
+            dfs(start, [start], set())
+            return all_paths
+
+        def validate_split_to_join_path(split, join):
+            """Ensure each outgoing arc of a split follows a single linear path to the join."""
+            if join not in joins:
+                return True  # Ignore invalid joins
+
+            if split not in vertex_outgoing:
+                return True  
+
+            outgoing_vertices = vertex_outgoing[split]
+            violations_found = False
+
+            for outgoing in outgoing_vertices:
+                paths = find_all_paths(outgoing, join)
+
+                if not paths:
+                    arc = f"{split}, {outgoing}"
+                    mark_arc_unsafe(arc, "Split-Join Violation: Path does not reach join", {
+                        'split_origin': split,
+                        'join_vertex': join,
+                        'violation_type': 'split_path_violation'
+                    })
+                    violations_found = True
+
+            return not violations_found
+
+        def check_intermediate_node_connections(split, join, path):
+            """Ensure intermediate nodes in the split-join path do not have external connections."""
+            for vertex in path[1:-1]:
+                if vertex in vertex_outgoing:
+                    for next_vertex in vertex_outgoing[vertex]:
+                        if next_vertex != join and next_vertex not in path:
+                            arc = f"{vertex}, {next_vertex}"
+                            mark_arc_unsafe(arc, "External Connection Violation: Intermediate node has external arc", {
+                                'split_origin': split,
+                                'join_vertex': join,
+                                'violation_type': 'external_connection_violation'
+                            })
+                            return False
+            return True
+
+        def validate_join_inputs(join_vertex):
+            """Ensure joins only receive arcs from valid split paths and mark specific meeting arcs."""
+            if join_vertex not in joins:
+                return True  # Ignore invalid joins
+
+            # Step 1: Find valid split sources that reach this join and collect their paths
+            valid_sources = set()
+            valid_paths_by_split = {}
+            for split in splits:
+                paths = find_all_paths(split, join_vertex)
+                if paths:
+                    valid_sources.add(split)
+                    valid_paths_by_split[split] = paths
             
-            for vertex in path:
-                if vertex == split or vertex == join:
-                    continue
-
-                # Check for branching
-                if vertex in splits:
-                    violation = f"Branching detected at vertex {vertex} in path {path}."
-                    if violation not in logged_violations:
-                        join_safe = False
-                        self.join_safe_violations.append({
-                            'violation': violation,
-                            'path': path,
-                            'source_vertex': source_vertex,
-                            'target_vertex': target_vertex,
-                            'split_origin': split,
-                            'join_vertex': join,
-                            'problematic_arc': f"Branching at {vertex}"
+            if not valid_sources:
+                return False
+            
+            # Step 2: Collect all vertices and arcs that are part of valid paths
+            valid_path_vertices = set()
+            valid_path_arcs = set()
+            
+            for split, paths in valid_paths_by_split.items():
+                for path in paths:
+                    for i in range(len(path) - 1):
+                        src, dest = path[i], path[i+1]
+                        valid_path_vertices.add(src)
+                        valid_path_vertices.add(dest)
+                        valid_path_arcs.add(f"{src}, {dest}")
+            
+            valid_path_vertices.add(join_vertex)
+            
+            # Step 3: Check for violations
+            violations_found = False
+            
+            # Check 1: All incoming arcs to the join should be from valid paths
+            for source in vertex_incoming.get(join_vertex, []):
+                arc = f"{source}, {join_vertex}"
+                
+                # Check if this source is part of a valid path to the join
+                if arc not in valid_path_arcs:
+                    mark_arc_unsafe(arc, "Invalid Join Input: Join receives arc from unrelated source", {
+                        'join_vertex': join_vertex,
+                        'invalid_source': source,
+                        'violation_type': 'unrelated_source_violation'
+                    })
+                    violations_found = True
+            
+            # Check 2: For each intermediate vertex in valid paths, verify no external connections
+            for vertex in valid_path_vertices:
+                if vertex == join_vertex or vertex in valid_sources:
+                    continue  # Skip join and splits, focus on intermediate vertices
+                    
+                # Check incoming arcs - all should be from valid paths
+                for src in vertex_incoming.get(vertex, []):
+                    arc = f"{src}, {vertex}"
+                    if arc not in valid_path_arcs:
+                        mark_arc_unsafe(arc, "Process Interruption: Path receives arc from external source", {
+                            'intermediate_vertex': vertex,
+                            'external_source': src,
+                            'violation_type': 'process_interruption'
                         })
-                        logged_violations.add(violation)
-                        return
+                        violations_found = True
+                
+                # Check outgoing arcs - all should be to valid paths
+                for dest in vertex_outgoing.get(vertex, []):
+                    arc = f"{vertex}, {dest}"
+                    if arc not in valid_path_arcs:
+                        mark_arc_unsafe(arc, "Unauthorized Branching: Path has external outgoing arc", {
+                            'intermediate_vertex': vertex,
+                            'external_destination': dest,
+                            'violation_type': 'unauthorized_branching'
+                        })
+                        violations_found = True
+            
+            # Check 3: Ensure all outgoing arcs from splits lead to the join
+            for split in valid_sources:
+                for dest in vertex_outgoing.get(split, []):
+                    # For each outgoing arc from the split, check if it's part of a path to the join
+                    direct_arc = f"{split}, {dest}"
+                    path_exists = False
+                    
+                    for path in valid_paths_by_split.get(split, []):
+                        if len(path) > 1 and path[0] == split and path[1] == dest:
+                            path_exists = True
+                            break
+                    
+                    if not path_exists:
+                        mark_arc_unsafe(direct_arc, "Disconnected Path: Split has outgoing arc that doesn't lead to join", {
+                            'split_vertex': split,
+                            'join_vertex': join_vertex,
+                            'disconnected_destination': dest,
+                            'violation_type': 'disconnected_path'
+                        })
+                        violations_found = True
+            
+            return not violations_found
+        
+        def classify_join_type(join_vertex):
+            """
+            Classify a join vertex as AND-JOIN, MIX-JOIN, or OR-JOIN based on the c-attributes of incoming arcs.
+            
+            Parameters:
+                join_vertex (str): The vertex to classify
+                
+            Returns:
+                str: 'AND-JOIN', 'MIX-JOIN', or 'OR-JOIN'
+            """
+            incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
+            
+            # Get condition values for each incoming arc
+            arc_conditions = {}
+            for arc in incoming_arcs:
+                for r in self.rdlt_structure:
+                    if r[0] == arc:  # r[0] is the arc identifier
+                        c_attribute = r[4]
+                        arc_conditions[arc] = c_attribute
+                        break
+            
+            # Classify based on conditions
+            epsilon_arcs = [arc for arc, cond in arc_conditions.items() if cond in ['ε', '0']]
+            non_epsilon_arcs = [arc for arc, cond in arc_conditions.items() if cond not in ['ε', '0']]
+            
+            if not epsilon_arcs and non_epsilon_arcs:
+                # All non-epsilon conditions
+                return "AND-JOIN"
+            elif epsilon_arcs and non_epsilon_arcs:
+                # Mix of epsilon and non-epsilon conditions
+                return "MIX-JOIN"
+            elif epsilon_arcs and not non_epsilon_arcs:
+                # All epsilon conditions
+                return "OR-JOIN"
+            elif len(set(arc_conditions.values())) == 1:
+                # All identical conditions (that aren't epsilon)
+                return "OR-JOIN"
 
-                # Check for interruptions
-                for pred in [r['arc'].split(', ')[0] for r in self._R_ if r['arc'].split(', ')[1] == vertex]:
-                    if pred not in vertices_in_path:
-                        violation = f"Interruption detected at vertex {vertex} with predecessor {pred}."
-                        if violation not in logged_violations:
-                            join_safe = False
-                            self.join_safe_violations.append({
-                                'violation': violation,
-                                'path': path,
-                                'source_vertex': source_vertex,
-                                'target_vertex': target_vertex,
-                                'split_origin': split,
-                                'join_vertex': join,
-                                'problematic_arc': f"Arc {pred} → {vertex} causes interruption"
+        def check_duplicate_conditions(join_vertex):
+            """
+            Check for correct conditions based on join type:
+            - AND-JOIN: No duplicate conditions allowed among non-epsilon values
+            - MIX-JOIN: All non-epsilon conditions must be identical
+            - OR-JOIN: All conditions should be identical
+            """
+            join_type = classify_join_type(join_vertex)
+            
+            incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
+            
+            # Get condition values for each incoming arc
+            arc_conditions = {}
+            for arc in incoming_arcs:
+                for r in self.rdlt_structure:
+                    if r[0] == arc:
+                        c_attribute = r[4]
+                        arc_conditions[arc] = c_attribute
+                        break
+            
+            violations_found = False
+            
+            if join_type == "AND-JOIN":
+                # No duplicate non-epsilon conditions allowed
+                condition_counts = {}
+                for arc in arc_conditions:
+                    if arc_conditions[arc] not in ['ε', '0']:
+                        condition = arc_conditions[arc]
+                        condition_counts[condition] = condition_counts.get(condition, 0) + 1
+                
+                for condition, count in condition_counts.items():
+                    if count > 1:
+                        duplicate_arcs = [arc for arc in arc_conditions if arc_conditions[arc] == condition]
+                        for arc in duplicate_arcs[1:]:
+                            mark_arc_unsafe(arc, "Duplicate Condition in AND-JOIN", {
+                                'join_vertex': join_vertex,
+                                'condition': condition,
+                                'violation_type': 'and_join_duplicate_condition'
                             })
-                            logged_violations.add(violation)
-                            return
-
-                # Check for unrelated processes
-                for succ in [r['arc'].split(', ')[1] for r in self._R_ if r['arc'].split(', ')[0] == vertex]:
-                    if succ not in vertices_in_path:
-                        violation = f"Unrelated process detected at vertex {vertex} with successor {succ}."
-                        if violation not in logged_violations:
-                            join_safe = False
-                            self.join_safe_violations.append({
-                                'violation': violation,
-                                'path': path,
-                                'source_vertex': source_vertex,
-                                'target_vertex': target_vertex,
-                                'split_origin': split,
-                                'join_vertex': join,
-                                'problematic_arc': f"Arc {vertex} → {succ} is unrelated"
+                            violations_found = True
+            
+            elif join_type == "MIX-JOIN":
+                # All non-epsilon conditions must be identical
+                non_epsilon_conditions = set(cond for cond in arc_conditions.values() 
+                                            if cond not in ['ε', '0'])
+                
+                if len(non_epsilon_conditions) > 1:
+                    reference_condition = next(iter(non_epsilon_conditions))
+                    for arc, condition in arc_conditions.items():
+                        if condition not in ['ε', '0'] and condition != reference_condition:
+                            mark_arc_unsafe(arc, "Different Non-Epsilon Conditions in MIX-JOIN", {
+                                'join_vertex': join_vertex,
+                                'expected_condition': reference_condition,
+                                'actual_condition': condition,
+                                'violation_type': 'mix_join_different_conditions'
                             })
-                            logged_violations.add(violation)
-                            return
+                            violations_found = True
+            
+            elif join_type == "OR-JOIN":
+                # All conditions should be identical
+                unique_conditions = set(arc_conditions.values())
+                if len(unique_conditions) > 1:
+                    reference_condition = max(arc_conditions.values(), key=list(arc_conditions.values()).count)
+                    for arc, condition in arc_conditions.items():
+                        if condition != reference_condition:
+                            mark_arc_unsafe(arc, "Different Conditions in OR-JOIN", {
+                                'join_vertex': join_vertex,
+                                'expected_condition': reference_condition,
+                                'actual_condition': condition,
+                                'violation_type': 'or_join_different_conditions'
+                            })
+                            violations_found = True
+            
+            return not violations_found
 
-        # Traverse from each split vertex and analyze paths to joins
+        def check_equal_l_values(join_vertex):
+            """
+            Check if L-values are equal based on join type.
+            - AND-JOIN: All incoming arcs must have the same L-value.
+            - MIX-JOIN and OR-JOIN have their own L-value rules.
+            """
+            join_type = classify_join_type(join_vertex)
+            
+            # Skip if it's not an AND-JOIN
+            if join_type != "AND-JOIN":
+                return True
+            
+            incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
+            arc_l_values = {}
+            
+            for arc in incoming_arcs:
+                for r in self.rdlt_structure:
+                    if r[0] == arc:
+                        l_value = r[3]
+                        arc_l_values[arc] = l_value
+                        break
+            
+            l_values = list(arc_l_values.values())
+            unique_l_values = set(l_values)
+            
+            # If we have more than one unique L-value, it's a violation
+            if len(unique_l_values) > 1:
+                reference_l_value = max(l_values, key=l_values.count)  # Most common L-value
+                violations_found = False
+                
+                for arc, l_value in arc_l_values.items():
+                    if l_value != reference_l_value:
+                        mark_arc_unsafe(arc, "Unequal L-values in AND-JOIN", {
+                            'join_vertex': join_vertex,
+                            'expected_l_value': reference_l_value,
+                            'actual_l_value': l_value,
+                            'violation_type': 'unequal_l_value'
+                        })
+                        violations_found = True
+                
+                return not violations_found
+            
+            return True
+
+        def check_loop_safety(join_vertex):
+            """
+            Check loop safety based on join type.
+            """
+            join_type = classify_join_type(join_vertex)
+            incoming_arcs = [f"{src}, {join_vertex}" for src in vertex_incoming.get(join_vertex, [])]
+            
+            violations_found = False
+            
+            for r in self.rdlt_structure:
+                arc = r[0]
+                if not arc:
+                    continue
+                    
+                try:
+                    src, dst = arc.split(', ')
+                except ValueError:
+                    continue
+                    
+                if dst == join_vertex:
+                    # Different checks based on join type
+                    if join_type == "OR-JOIN":
+                        # Check SafeCA value (r[11])
+                        safe_ca_value = r[11]
+                        if isinstance(safe_ca_value, str) and safe_ca_value.startswith('-'):
+                            mark_arc_unsafe(arc, "SafeCA Violation in OR-JOIN", {
+                                'join_vertex': join_vertex,
+                                'arc': arc,
+                                'safe_ca_value': safe_ca_value,
+                                'violation_type': 'or_join_safety_violation'
+                            })
+                            violations_found = True
+                    
+                    else:  # AND-JOIN or MIX-JOIN
+                        # Check loop-safeness (r[9])
+                        loop_safe_value = r[9]
+                        if isinstance(loop_safe_value, str) and loop_safe_value.startswith('-'):
+                            mark_arc_unsafe(arc, f"Loop-Safe Violation in {join_type}", {
+                                'join_vertex': join_vertex,
+                                'arc': arc,
+                                'loop_safe_value': loop_safe_value,
+                                'violation_type': 'loop_safe_violation'
+                            })
+                            violations_found = True
+            
+            return not violations_found
+
+        # Main loop for enforcing join safety
+        for join in joins:
+            # Validate join inputs
+            if not validate_join_inputs(join):
+                join_safe = False
+                
+            # Check for duplicate conditions
+            if not check_duplicate_conditions(join):
+                join_safe = False
+                
+            # Check for equal L-values in AND-JOINs
+            if not check_equal_l_values(join):
+                join_safe = False
+                
+            # Check loop safety for all join types
+            if not check_loop_safety(join):
+                join_safe = False
+
         for split in splits:
-            if split not in joins:
-                visited = set()
-                stack = [(split, [split])]  # (current_vertex, current_path)
+            for join in joins:
+                paths = find_all_paths(split, join)
+                if paths:
+                    if not validate_split_to_join_path(split, join):
+                        join_safe = False
+                        continue
 
-                while stack:
-                    current, path = stack.pop()
+                    for path in paths:
+                        if not check_intermediate_node_connections(split, join, path):
+                            join_safe = False
 
-                    if current in joins:
-                        analyze_split_join_path(path, split, current)
-                        if not join_safe:
-                            return False  # Early exit if unsafeness is detected
-
-                    for neighbor in [r['arc'].split(', ')[1] for r in self._R_ if r['arc'].split(', ')[0] == current]:
-                        if neighbor not in visited:
-                            visited.add(neighbor)
-                            stack.append((neighbor, path + [neighbor]))
+        # Update join_safe vector in rdlt_structure
+        for i, r in enumerate(self.rdlt_structure):
+            arc = r[0]
+            js = -1 if arc in involved_arcs else 1
+            r[12] = self.elementMult(js, r[7])
+            r[12] = self.literalOR(r[12], r[7])
 
         return join_safe
     
     def loop_safe(self, r, cv):
         """
-        Determines if an arc is loop-safe based on its cycle and out-cycle values.
-
+        Determines if an arc is loop-safe based on its cycle value and attribute comparison.
+        
         Parameters:
             - r (list): The arc data to check.
-            - cv_value (str): The cycle value of the arc.
-
+            - cv (int): The cycle value of the arc.
+            
         Returns:
-            boolean: 1 if the arc is loop-safe, 0 otherwise.
+            int: 1 if loop-safe, -1 if not loop-safe, 0 if irrelevant (not in cycle).
         """
-        # Assume cv = 1 indicates the arc is in the out-cycle vector
-        if cv == 1:
-            if int(r[3]) > int(r[5]):  # Check if l-attribute > eRU
-                ls = 1  # Safe
-            else:
-                ls = -1  # Unsafe
-                self.loop_safe_violations.append(ls)  # Log the violation
-        else:
-            ls = 0  # If the arc is not part of the out-cycle vector, it's safe by default
-
-        # Perform the element-wise multiplication to update the safeness value
-        r[9] = self.elementMult(ls, r[7])  # Store the result of multiplication in r[9]
+        # Initialize loop-safe value
+        ls = 0
         
-        # Perform the literal OR operation between cv and r[9], updating r[9]
-        r[9] = self.literalOR(r[9], r[8])  # Update r[9] with the result of the literal OR
+        # Check if the arc has a cycle value of 1 (part of non-critical cycle)
+        if cv == 1:
+            # Compare L attribute with eRU as per algorithm (lines 21-33)
+            if int(r[3]) > int(r[5]):  # L[x][y] > eRU
+                ls = 1  # Loop-safe
+            else:  # L[x][y] < eRU
+                ls = -1  # Not loop-safe
+                # self.loop_safe_violations.append(r[0])  # Log the violation
+        
+        # Set the loop-safe value in the arc data
+        r[9] = ls
 
-        loopsafeness = r[9]
-
-        return loopsafeness
+        # Perform element-wise multiplication with the cycle value (line 34)
+        loopsafe_result = self.elementMult(ls, r[7])
+        
+        # Update the arc data with the final result
+        r[9] = loopsafe_result
+        
+        return loopsafe_result
 
     
     def find_r_by_arc(self, arc):
@@ -463,158 +902,185 @@ class Matrix:
                 return r
         return None
     
-    def checkIfAllPositive(self):
+    def checkIfAllPositive(self, check_type=None):
         """
-        Checks if all elements in the provided vector are positive.
-
+        Checks if all elements in the provided vector are positive for a specific check type.
+        
         Parameters:
-            vector (list): The vector to check.
-
+            check_type (str, optional): The type of check to perform ('join', 'loop', 'safe').
+                                    If None, performs all checks.
+        
         Returns:
-            bool: True if all elements are positive, False otherwise.
+            bool: True if all elements are positive for the specified check, False otherwise.
         """
-        self.loop_safe_violations = []  # Store violations in column 9
-        self.safeCA_violations = []  # Store violations in column 11
-
+        join_safe = True
+        loop_safe = True
+        safe_ca = True
+        
         for row in self.rdlt_structure:
-            if isinstance(row, list) and len(row) > 11:
-                # Extract values safely
-                loopsafe = row[9]  # Column index 9 (1-based)
-                safeCA = row[11]  # Column index 11 (1-based)
+            if isinstance(row, list) and len(row) > 12:
+                arc = row[0]
+                loopsafe = row[9]  # Column index 9
+                safeCA = row[11]   # Column index 11
+                joinsafe = row[12] # Column index 12
+                r_id = row[13] if len(row) > 13 else None  # Safely get r-id
 
-                # Check and store loop-safeness violations
+                # Check join-safe violations
+                if isinstance(joinsafe, str) and joinsafe.startswith('-'):
+                    join_safe = False
+
+                # Check loop-safeness violations
                 if isinstance(loopsafe, str) and loopsafe.startswith('-'):
-                    self.loop_safe_violations.append({
-                        "arc": row[0],  # Assuming first column contains the arc name
-                        "violating_value": loopsafe
-                    })
+                    # Check if this violation is already recorded
+                    if not any(v.get('arc') == arc for v in self.loop_safe_violations):
+                        self.loop_safe_violations.append({
+                            "arc": arc,
+                            "r-id": r_id
+                        })
+                    loop_safe = False
 
-                # Check and store safeness violations
+                # Check safeness violations
                 if isinstance(safeCA, str) and safeCA.startswith('-'):
-                    self.safeCA_violations.append({
-                        "arc": row[0],  # Assuming first column contains the arc name
-                        "violating_value": safeCA
-                    })
+                    # Check if this violation is already recorded
+                    if not any(v.get('arc') == arc for v in self.safeCA_violations):
+                        self.safeCA_violations.append({
+                            "arc": arc,
+                            "r-id": r_id
+                        })
+                    safe_ca = False
 
-        # Return False if any violations exist
-        return not (self.loop_safe_violations or self.safeCA_violations)
+        if check_type == 'join':
+            return join_safe
+        elif check_type == 'loop':
+            return loop_safe
+        elif check_type == 'safe':
+            return safe_ca
+        else:
+            return join_safe and loop_safe and safe_ca
 
 
     def evaluate(self):
         """
-        Evaluates the RDLT structure to check if it satisfies L-safeness criteria 
-        by verifying join-safeness, loop-safeness, and safeness.
-
-        This method processes the RDLT structure to calculate cycle vectors, 
-        loop safety, and out-cycle vectors for each arc. It then checks the 
-        overall safeness of the system.
-
-        Returns:
-            tuple: A tuple containing:
-                - l_safe (bool): True if the system is L-safe, False otherwise.
-                - matrix (list): The matrix of operations applied to the RDLT structure.
+        Evaluates the RDLT structure to check if it satisfies L-safeness criteria.
         """
         matrix = []
         
         for r in self.rdlt_structure:
-            cv = self.cycle_vector_operation(r)
+            cv, cyc = self.cycle_vector_operation(r)
             ls = self.loop_safe(r, cv)
             safe_vector = self.out_cycle_vector_operation(r)
-            matrix.append([ls, safe_vector])
-        # for i, r in enumerate(self.rdlt_structure):
-        #     cv = self.cycle_vector_operation(r)
-        #     ls = self.loop_safe(r, cv)
-        #     safe_vector = self.out_cycle_vector_operation(r, cv)
+            self.join_safe()
+            matrix.append([cv, cyc, ls, safe_vector])
 
-        #     # Update the 'LoopSafe' field
-        #     self.rdlt_structure[i][6] = ls  # Assuming index 6 is 'LoopSafe'
+        # Check each safety condition independently
+        join_safe = self.checkIfAllPositive('join')
+        loop_safe = self.checkIfAllPositive('loop')
+        safe = self.checkIfAllPositive('safe')
 
-        #     # Store safe vector calculation
-        #     self.rdlt_structure[i][7] = safe_vector  # Assuming index 7 is 'SafeCA'
-
-        
-        join_safe = self.join_safe()
-        loop_safe = self.checkIfAllPositive()
-        safe = self.checkIfAllPositive()
-
-        # print("\nJOIN Safe: ", join_safe)
-        # print("\nLoop-safe: ",loop_safe)
-        # print("\nSafe CA: ", safe)
+        # Only report Loop-Safe NCAs as not satisfied if there are actual violations
+        if not loop_safe and not self.loop_safe_violations:
+            loop_safe = True
 
         if join_safe and loop_safe and safe:
             self.l_safe_vector = True
         else:
             self.l_safe_vector = False
 
+        print(f"\nJOIN-Safe: {'Satisfied.' if join_safe else 'Not Satisfied.'}")
+        print(f"Loop-Safe NCAs: {'Satisfied.' if loop_safe else 'Not Satisfied.'}")
+        print(f"Safe CAs: {'Satisfied.' if safe else 'Not Satisfied.'}\n")
+
         self.matrix_operations = matrix
         return self.l_safe_vector, matrix
 
     def get_violations(self):
         """
-        Retrieves and prints the violations found during the L-safeness checks.
-        This method looks for violations in JOIN-safeness, loop-safeness, 
-        and safeness of critical arcs.
-
-        Returns:
-            list: A list of violation details, including type, source, target, 
-                  problematic arcs, and violating values.
+        Retrieves and formats the violations found during the L-safeness checks.
         """
-        violations = []
-
+        # Clear existing violations list
+        self.violations = []
+        seen_violations = set()
+        
+        # Process JOIN-Safeness Violations
         if self.join_safe_violations:
             for violation in self.join_safe_violations:
-                violation_details = {
-                    "type": "JOIN-Safeness",
-                    "source_vertex": violation["source_vertex"],
-                    "target_vertex": violation["target_vertex"],
-                    "split_origin": violation["split_origin"],
-                    "join_vertex": violation["join_vertex"],
-                    "problematic_arc": violation["problematic_arc"],
-                }
-                violations.append(violation_details)
-                # Print each violation component separately
-                print(f"JOIN-Safeness Violation:")
-                print(f"  Type: {violation_details['type']}")
-                print(f"  Source Vertex: {violation_details['source_vertex']}")
-                print(f"  Target Vertex: {violation_details['target_vertex']}")
-                print(f"  Split Origin: {violation_details['split_origin']}")
-                print(f"  Join Vertex: {violation_details['join_vertex']}")
-                print(f"  Problematic Arc: {violation_details['problematic_arc']}")
+                # Create a composite key for deduplication
+                composite_key = f"{violation.get('arc')}|{violation.get('r-id')}"
+                
+                if composite_key not in seen_violations:
+                    seen_violations.add(composite_key)
+                    
+                    violation_details = {
+                        "type": "JOIN-Safeness",
+                        "split_origin": violation.get("split_origin", "Unknown"),
+                        "join_vertex": violation.get("join_vertex", "Unknown"),
+                        "problematic_arc": violation.get("problematic_arc", violation.get("arc", "Unknown")),
+                        "r-id": violation.get("r-id", "Unknown"),
+                        "arc": violation.get("arc", "Unknown"),
+                        "violation": violation.get("violation", "JOIN-Safeness")
+                    }
+                    self.violations.append(violation_details)
+                    
+                    # Print each violation component separately for debugging
+                    print(f"\nJOIN-Safeness Violation:")
+                    print(f"  r-id: {violation_details['r-id']}")
+                    print(f"  arc: {violation_details['arc']}")
+                    # print(f"  Split Origin: {violation_details['split_origin']}")
+                    # print(f"  Join Vertex: {violation_details['join_vertex']}")
+                    print(f"  Violation: {violation_details['violation']}")
 
-        # Loop-Safeness Violations
+        # Process Loop-Safeness Violations
         if self.loop_safe_violations:
             for violation in self.loop_safe_violations:
-                violations.append({
+                violation_details = {
                     "type": "Loop-Safeness",
-                    "arc": violation["arc"],
-                    "violating_value": violation["violating_value"],
-                })
-                print(f"Loop-Safeness Violation:")
-                print(f"  Arc: {violation['arc']}")
-                print(f"  Violating Value: {violation['violating_value']}")
+                    "arc": violation.get("arc", "Unknown"),
+                    "r-id": violation.get("r-id", "Unknown")
+                }
+                self.violations.append(violation_details)
+                
+                print(f"\nLoop-Safeness Violation:")
+                print(f"  Arc: {violation_details['arc']}")
+                print(f"  r-id: {violation_details['r-id']}")
 
-        # Safeness of Critical Arcs (CAs) Violations
+        # Process Safeness of Critical Arcs (CAs) Violations
         if self.safeCA_violations:
             for violation in self.safeCA_violations:
-                violations.append({
+                violation_details = {
                     "type": "Safeness of Critical Arcs",
-                    "arc": violation["arc"],
-                    "violating_value": violation["violating_value"],
-                })
-                print(f"Unsafe Critical Arc:")
-                print(f"  Arc: {violation['arc']}")
-                print(f"  Violating Value: {violation['violating_value']}")
+                    "arc": violation.get("arc", "Unknown"),
+                    "r-id": violation.get("r-id", "Unknown")
+                }
+                self.violations.append(violation_details)
+                
+                print(f"\nSafeness Violation:")
+                print(f"  Arc: {violation_details['arc']}")
+                print(f"  r-id: {violation_details['r-id']}")
 
-        return violations
+        # If no violations were found, print a message
+        if not self.violations:
+            print("\nNo violations found. The RDLT structure is L-safe.")
+        else:
+            print(f"\nFound {len(self.violations)} violations in total.")
+
+        return self.violations
 
 
-    
     def print_matrix(self):
         """
         Prints the matrix (RDLT structure) with updated values.
         This method iterates through each row of the RDLT structure and prints it.
-
         """
+        #print whoie matrix
+        # for row in self.rdlt_structure:
+        #     print(row)
+        #print specific arcs (arc, c-attribute, l-attribute, loop-safe, safe, join-safe)
+        columns_to_print = [0, 4, 3, 5, 9, 11, 12]
+        
         for row in self.rdlt_structure:
-            print(row)
+            # Create a new list containing only the specified columns
+            filtered_row = [row[col] for col in columns_to_print if col < len(row)]
+            print(filtered_row)
 
+    def get_matrix_data(self):
+        return self.matrix_data

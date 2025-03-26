@@ -1,369 +1,274 @@
 import copy
-from collections import defaultdict
+from collections import defaultdict, Counter
 import utils
 
 class ModifiedActivityExtraction:
-    def __init__(self, R, contraction_path=None, R2=None, out_list=None, cycle_list=None):
-        """
-        Initialize the advanced activity extraction with enhanced cycle and path handling.
-        
-        Args:
-            R (list): Reduced Direct Labeled Transition system
-            contraction_path (list): Sequence of contraction paths
-            R2 (list): Secondary transition system
-            out_list (list): List of out-bridges
-            cycle_list (list): List of cycles with their L-attributes
-        """
+    def __init__(self, R, violations=None, contraction_path=None, cycle_list=None):
         self.R = R
-        self.R2 = R2 or []
         self.contraction_path = contraction_path or []
-        self.out_list = out_list or []
+        self.violations = violations or []
         self.cycle_list = cycle_list or []
-        # Initialize activity_profiles as an empty dictionary
-        self.activity_profiles = {}
-        # Enhanced tracking for time vectors
-        self.time_vectors = self._initialize_time_vectors()
         
-        # Core tracking structures
         self.source, self.sink = utils.get_source_and_target_vertices(self.R)
 
-    def _initialize_time_vectors(self):
-        """
-        Initialize time vectors for each arc based on L-attributes.
-        
-        Returns:
-            dict: Time vectors for each arc with zero initialization
-        """
-        time_vectors = {}
-        for arc_data in self.R:
-            arc = arc_data['arc']
+        self.checked_arcs = set()
+        self.traversed_arcs = set()
+        self.arc_traversal_count = defaultdict(int)
+        self.max_traversal_depth = len(self.R) * 3
 
-            l_attribute = int(arc_data.get('l-attribute', ))
-            
-            # Ensure l_attribute is a positive integer
-            l_attribute = max(1, l_attribute)
-            
-            time_vectors[arc] = [0] * l_attribute
-        return time_vectors
-    
-    
-    def extract_activity_profile(self):
-        """
-        Extract activity profile based on the comprehensive mathematical model.
+        self.join_vertices = self._identify_join_vertices()
+        self.join_classifications = self._classify_joins()
+
+        self.activity_profiles = {}
+
+    def _identify_join_vertices(self):
+        """Identify vertices with multiple incoming arcs"""
+        incoming_count = defaultdict(int)
+        for arc in self.R:
+            try:
+                _, target = self._safe_get_arc(arc).split(', ')
+                incoming_count[target] += 1
+            except Exception:
+                continue
         
-        Returns:
-            dict: Detailed activity profile with rigorous traversal tracking
-        """
-        activity_profile = {
-            'S': {},              # Timestep-grouped arcs
-            'time_vectors': self.time_vectors,  # Track arc time vectors
-            'deadlock': False,    # Deadlock flag
-            'successful': False,  # Successful traversal flag
-            'sink_timestep': None  # Timestep when sink is reached
-        }
+        return {v for v, count in incoming_count.items() if count > 1}
+
+    def _classify_joins(self):
+        """Classify join vertices based on their incoming arcs' c-attributes"""
+        join_classifications = {}
         
-        R_copy = copy.deepcopy(self.R)
-        current_vertex = self.source
-        timestep = 1
-        visited_stack = [self.source]
-        
-        # Tracking unconstrained arc selection
-        def is_unconstrained_arc(current_arc, competing_arcs):
-            """
-            Formal unconstrained arc evaluation based on mathematical definition.
-            
-            Args:
-                current_arc (str): Current arc being considered
-                competing_arcs (list): Other arcs targeting the same vertex
-            
-            Returns:
-                bool: Whether the arc is unconstrained
-            """
-            current_end = current_arc.split(', ')[1]
-            current_arc_data = next(
-                (a for a in R_copy if a['arc'] == current_arc), 
-                None
-            )
-            
-            if not current_arc_data:
-                return False
-            
-            current_c_attr = current_arc_data.get('c-attribute', '0')
-            
-            for competing_arc in competing_arcs:
-                # Condition 1: C-attribute compatibility
-                competing_arc_data = next(
-                    (a for a in R_copy if a['arc'] == competing_arc), 
-                    None
-                )
-                
-                if not competing_arc_data:
-                    continue
-                
-                competing_c_attr = competing_arc_data.get('c-attribute', '0')
-                
-                # Condition 1: C-attribute matching
-                if competing_c_attr not in {'0', current_c_attr}:
-                    continue
-                
-                # Condition 2: Traversal Count Verification
-                current_time_vector = self.time_vectors.get(current_arc, [])
-                competing_time_vector = self.time_vectors.get(competing_arc, [])
-                
-                current_traversals = len([t for t in current_time_vector if t >= 1])
-                competing_traversals = len([t for t in competing_time_vector if t >= 1])
-                
-                max_competing_l_attr = len(competing_time_vector)
-                
-                # Condition 2: Traversal count consistency
-                if (current_traversals <= competing_traversals <= max_competing_l_attr):
-                    return True
-                
-                # Condition 3: Epsilon handling
-                if (
-                    current_c_attr == '0' and 
-                    competing_c_attr in self.R_sigma and 
-                    any(competing_time_vector)
-                ):
-                    return True
-            
-            return False
-        
-        max_iterations = 500
-        iteration = 0
-        
-        while current_vertex != self.sink and iteration < max_iterations:
-            iteration += 1
-            
-            # Identify arcs starting from current vertex
-            current_arcs = [
-                arc_data['arc'] for arc_data in R_copy 
-                if arc_data['arc'].startswith(f"{current_vertex}, ")
+        for vertex in self.join_vertices:
+            incoming_arcs = [
+                arc for arc in self.R if self._safe_get_arc(arc).endswith(f", {vertex}")
             ]
             
-            # Identify competing arcs for each potential arc
-            potential_arcs = []
-            for current_arc in current_arcs:
-                end_vertex = current_arc.split(', ')[1]
-                competing_arcs = [
-                    arc for arc in current_arcs 
-                    if arc.split(', ')[1] == end_vertex
-                ]
-                
-                # Check unconstrained arc conditions
-                if is_unconstrained_arc(current_arc, competing_arcs):
-                    potential_arcs.append(current_arc)
+            c_attrs = [self._get_c_attribute(arc) for arc in incoming_arcs]
+            non_epsilon = [c for c in c_attrs if c != '0']
+
+            if len(set(c_attrs)) <= 1:
+                join_type = 'OR-JOIN'
+            elif len(non_epsilon) == len(c_attrs):
+                join_type = 'AND-JOIN'
+            else:
+                join_type = 'MIX-JOIN'
+
+            join_classifications[vertex] = {
+                'type': join_type, 
+                'incoming_arcs': incoming_arcs, 
+                'c_attributes': c_attrs
+            }
+        
+        return join_classifications
+
+    def _check_join_traversability(self, arc, current_vertex):
+        """
+        Enhanced join traversability check with backtracking support
+        """
+        arc_str = self._safe_get_arc(arc)
+        current_c_attr = self._get_c_attribute(arc)
+
+        # If not a join vertex, always traversable
+        if current_vertex not in self.join_vertices:
+            return True, []
+
+        join_info = self.join_classifications[current_vertex]
+        join_type = join_info['type']
+        incoming_arcs = join_info['incoming_arcs']
+        c_attributes = join_info['c_attributes']
+
+        # OR-JOIN: freely traversable if c-attributes are same
+        if join_type == 'OR-JOIN':
+            return True, []
+
+        # Find non-epsilon arcs
+        non_epsilon_arcs = [
+            arc for arc, c_attr in zip(incoming_arcs, c_attributes) 
+            if c_attr != '0'
+        ]
+
+        # AND-JOIN: all non-epsilon arcs must be traversable simultaneously
+        if join_type == 'AND-JOIN':
+            if current_c_attr != '0':
+                # Must traverse all non-epsilon arcs together
+                return all(
+                    self._is_arc_traversable(other_arc) 
+                    for other_arc in non_epsilon_arcs
+                ), non_epsilon_arcs
+            return False, []
+
+        # MIX-JOIN: non-epsilon can be traversed alone, epsilon requires checking non-epsilon
+        if join_type == 'MIX-JOIN':
+            if current_c_attr != '0':
+                return True, []
+            else:
+                return all(
+                    self._is_arc_traversable(other_arc) 
+                    for other_arc in non_epsilon_arcs
+                ), non_epsilon_arcs
+
+        return False, []
+
+    def extract_activity_profiles(self):
+        """Extract activity profiles with proper join handling"""
+        self.activity_profiles = {}
+        arcs_to_traverse = list(self.contraction_path.keys())
+        arcs_to_traverse.insert(0, None)
+        
+        remaining_arcs = [
+            arc for arc in self.R 
+            if self._safe_get_arc(arc) not in arcs_to_traverse
+        ]
+        arcs_to_traverse.extend(remaining_arcs)
+
+        for contract_arc in arcs_to_traverse:
+            self.traversed_arcs = set()
+            self.arc_traversal_count = defaultdict(int)
             
-            # Deadlock handling
-            if not potential_arcs:
-                if visited_stack:
-                    current_vertex = visited_stack.pop()
-                    continue
+            if contract_arc is None:
+                profile_key = None
+                profile_arc = None
+            else:
+                profile_key = self._safe_get_arc(contract_arc)
+                if profile_key in self.contraction_path:
+                    contracted_path = self.contraction_path[profile_key].get('contracted_path', [])
+                    profile_arc = contracted_path[0] if contracted_path else None
+                else:
+                    profile_arc = None
+            
+            profile = self._extract_profile_with_joins(profile_arc)
+            self.activity_profiles[profile_key] = profile
+
+        return self.activity_profiles
+
+    def _extract_profile_with_joins(self, contract_arc=None):
+        """Core traversal algorithm with proper join handling"""
+        activity_profile = {
+            'S': {},
+            'deadlock': False,
+            'successful': False,
+            'sink_timestep': None
+        }
+
+        current_vertex = self.source
+        timestep = 1
+        iteration = 0
+
+        while current_vertex != self.sink and iteration < self.max_traversal_depth:
+            iteration += 1
+
+            # Find available arcs from current vertex
+            current_arcs = [
+                arc for arc in self.R 
+                if self._safe_get_arc(arc).startswith(f"{current_vertex}, ")
+            ]
+
+            if contract_arc:
+                contract_arc_str = self._safe_get_arc(contract_arc)
+                current_arcs = [
+                    arc for arc in current_arcs 
+                    if self._safe_get_arc(arc) != contract_arc_str
+                ]
+
+            # Find traversable arcs with join constraints
+            traversable_arcs = []
+            required_arcs_map = {}
+            
+            for arc in current_arcs:
+                arc_str = self._safe_get_arc(arc)
+                _, next_vertex = arc_str.split(', ')
+
+                is_traversable, required_arcs = self._check_join_traversability(arc, next_vertex)
                 
+                if is_traversable and self._is_arc_traversable(arc):
+                    # Check if required arcs are also traversable
+                    if all(self._is_arc_traversable(req_arc) for req_arc in required_arcs):
+                        traversable_arcs.append(arc)
+                        required_arcs_map[arc_str] = required_arcs
+
+            # Deadlock check
+            if not traversable_arcs:
                 activity_profile['deadlock'] = True
                 break
+
+            # Select first traversable arc and its required arcs
+            selected_arc = traversable_arcs[0]
+            arc_str = self._safe_get_arc(selected_arc)
+            _, next_vertex = arc_str.split(', ')
+            required_arcs = required_arcs_map.get(arc_str, [])
+
+            # Update traversal tracking
+            self.arc_traversal_count[arc_str] += 1
+            self.traversed_arcs.add(arc_str)
             
-            # Select first potential arc
-            current_arc = potential_arcs[0]
-            _, end_vertex = current_arc.split(', ')
+            # Record main arc
+            activity_profile['S'][timestep] = {arc_str}
             
-            # Update time vector
-            time_vector = self.time_vectors.get(current_arc, [])
-            max_time = max(
-                [max(self.time_vectors.get(other_arc, [0])) for other_arc in 
-                 [arc for arc in R_copy if arc['arc'].endswith(f", {end_vertex}")]
-                ] or [0]
-            )
-            
-            # Find first zero in time vector
-            zero_index = time_vector.index(0) if 0 in time_vector else len(time_vector)
-            time_vector[zero_index] = max_time + 1
-            
-            # Update activity profile
-            if timestep not in activity_profile['S']:
-                activity_profile['S'][timestep] = []
-            activity_profile['S'][timestep].append(current_arc)
-            
-            # Update current state
-            current_vertex = end_vertex
-            visited_stack.append(current_vertex)
-            
-            # Increment timestep
+            # Record required arcs at same timestep if any
+            for req_arc in required_arcs:
+                req_arc_str = self._safe_get_arc(req_arc)
+                if req_arc_str not in self.traversed_arcs:
+                    self.arc_traversal_count[req_arc_str] += 1
+                    self.traversed_arcs.add(req_arc_str)
+                    activity_profile['S'][timestep].add(req_arc_str)
+
+            current_vertex = next_vertex
+
+            # Check if sink is reached
+            if current_vertex == self.sink:
+                activity_profile['successful'] = True
+                activity_profile['sink_timestep'] = timestep
+                break
+
             timestep += 1
-        
-        # Finalize activity profile
-        if current_vertex == self.sink:
-            activity_profile['successful'] = True
-            activity_profile['sink_timestep'] = timestep - 1
-        
+
+        if current_vertex != self.sink:
+            activity_profile['deadlock'] = True
+
         return activity_profile
-    
-    def _is_arc_traversable(self, arc, R, activity_profile, traversed_arcs, current_timestep):
-        """
-        Determine if an arc is traversable based on join type and current activity profile.
-        
-        Args:
-            arc (str): The arc to check for traversability
-            R (list): Reduced Direct Labeled Transition system
-            activity_profile (dict): Current activity profile
-            traversed_arcs (set): Set of already traversed arcs
-            current_timestep (int): Current timestep
-        
-        Returns:
-            bool: Whether the arc is traversable
-        """
-        # Prevent re-traversing an arc
-        if arc in traversed_arcs:
-            return False
-        
-        start, end = arc.split(', ')
-        
-        # Find all incoming arcs to the end vertex
-        incoming_arcs = [a['arc'] for a in R if a['arc'].endswith(f", {end}")]
-        
-        # If no other incoming arcs, always traversable
-        if len(incoming_arcs) <= 1:
-            return True
-        
-        # Determine join type
-        join_type = self._determine_join_type(end, R)
-        
-        # Get c-attributes for all incoming arcs
-        c_attributes = {}
-        for inc_arc in incoming_arcs:
-            inc_arc_data = next((a for a in R if a['arc'] == inc_arc), None)
-            c_attributes[inc_arc] = inc_arc_data.get('c-attribute', '0')
-        
-        # Current arc's c-attribute
-        current_arc_data = next((a for a in R if a['arc'] == arc), None)
-        current_c_attr = current_arc_data.get('c-attribute', '0')
-        
-        # OR-JOIN: Always traversable if first incoming arc or all attributes identical
-        if join_type == "OR-JOIN":
-            return True
-        
-        # AND-JOIN: All other non-epsilon arcs must be checked
-        elif join_type == "AND-JOIN":
-            # Ensure all non-epsilon arcs have been checked
-            return all(
-                inc_arc in activity_profile['checks'] 
-                for inc_arc in incoming_arcs 
-                if inc_arc != arc and c_attributes[inc_arc] != '0'
-            )
-        
-        # MIX-JOIN: More complex traversability rules
-        elif join_type == "MIX-JOIN":
-            # If current arc is non-epsilon
-            if current_c_attr != '0':
-                # No need to check epsilon arcs
-                return True
-            
-            # If current arc is epsilon, check non-epsilon arcs first
-            return all(
-                inc_arc in activity_profile['checks'] 
-                for inc_arc in incoming_arcs 
-                if inc_arc != arc and c_attributes[inc_arc] != '0'
-            )
-        
-        return False
-    
-    def _determine_join_type(self, vertex, R):
-        """
-        Determine the join type for a vertex based on c-attributes.
-        
-        Args:
-            vertex (str): The vertex to analyze
-            R (list): Reduced Direct Labeled Transition system
-        
-        Returns:
-            str: Join type - 'OR-JOIN', 'AND-JOIN', or 'MIX-JOIN'
-        """
-        # Get incoming arcs to the vertex
-        incoming_arcs = [a for a in R if a['arc'].endswith(f", {vertex}")]
-        
-        # Extract c-attributes, treating '0' as epsilon
-        c_attributes = [arc.get('c-attribute', '0') for arc in incoming_arcs]
-        
-        # Remove epsilon (zero) attributes to check core attributes
-        non_epsilon_attrs = [attr for attr in c_attributes if attr != '0']
-        
-        # Case 1: All attributes are identical (including all epsilon)
-        if len(set(c_attributes)) <= 1:
-            return "OR-JOIN"
-        
-        # Case 2: All non-epsilon attributes are different
-        if len(set(non_epsilon_attrs)) > 1:
-            return "AND-JOIN"
-        
-        # Case 3: Mixed epsilon and non-epsilon
-        return "MIX-JOIN"
-    
-    def _extract_out_bridge_arc(self, out_bridge):
-        """
-        Safely extract the arc from an out-bridge representation.
-        
-        Args:
-            out_bridge (str or dict): Out-bridge representation
-        
-        Returns:
-            str: Arc representation
-        """
-        # If it's already a string, return it
-        if isinstance(out_bridge, str):
-            return out_bridge
-        
-        # If it's a dictionary, try multiple ways to extract the arc
-        if isinstance(out_bridge, dict):
-            # Try getting 'arc' key
-            if 'arc' in out_bridge:
-                return out_bridge['arc']
-            
-            # If no 'arc' key, convert dictionary to string representation
-            return str(out_bridge)
-        
-        # If it's neither string nor dict, convert to string
-        return str(out_bridge)
-    
-    def print_activity_profile(self, activity_profile=None):
-        """
-        Print the activity profile in the specified Markdown format.
-        
-        Parameters:
-            activity_profile (dict, optional): The activity profile to print. 
-            If None, uses the most recently generated profile.
-        """
-        # If no activity profile provided, use the most recent one
-        if activity_profile is None:
-            # Get the most recent activity profile (last added to the dictionary)
-            if not self.activity_profiles:
-                print("No activity profiles available.")
-                return
-            activity_profile = list(self.activity_profiles.values())[-1]
-        
-        # Check if 'S' key exists in the activity profile
-        if 'S' not in activity_profile or not activity_profile['S']:
-            print("No timestep sets found in the activity profile.")
+
+    def _is_arc_traversable(self, arc):
+        """Check arc traversability with l-attribute constraint"""
+        arc_str = self._safe_get_arc(arc)
+        l_attribute = int(arc.get('l-attribute', 0))
+        current_traversal_count = self.arc_traversal_count[arc_str]
+        return current_traversal_count < l_attribute
+
+    def _safe_get_arc(self, arc_data):
+        """Safely get arc representation"""
+        if isinstance(arc_data, str):
+            return arc_data
+        elif isinstance(arc_data, dict):
+            return arc_data.get('arc', str(arc_data))
+        return str(arc_data)
+
+    def _get_c_attribute(self, arc):
+        """Get c-attribute of an arc, defaulting to '0'"""
+        return arc.get('c-attribute', '0')
+
+    def print_activity_profiles(self):
+        """Print detailed activity profiles"""
+        for contract_arc, activity_profile in self.activity_profiles.items():
+            print(f"\n--- Activity Profile for Contract Arc: {contract_arc} ---")
+            self._print_activity_profile(activity_profile)
+
+    def _print_activity_profile(self, activity_profile):
+        """Print a single activity profile"""
+        if 'S' not in activity_profile:
+            print("Invalid activity profile: Missing 'S' key")
             return
 
-        # Print individual timestep sets with Markdown bold formatting
+        print("Timestep Sets:")
         for timestep, arcs in sorted(activity_profile['S'].items()):
             print(f"S({timestep}) = {set(arcs)}")
         
-        # Print summary set 
+        print("\nSummary:")
         summary_set = {f"S({n})" for n in sorted(activity_profile['S'].keys())}
         print(f"S = {summary_set}")
         
-        # Print sink reaching information
         if activity_profile.get('successful', False):
-            print(f"The sink was reached at timestep {activity_profile.get('sink_timestep', 'N/A')}.")
+            print(f"Sink reached at timestep: {activity_profile.get('sink_timestep', 'N/A')}")
         else:
-            print("The activity profile did not successfully reach the sink.")
-    
-    def get_activity_profiles(self):
-        """
-        Returns the activity profiles for each violation.
+            print("Sink not reached.")
         
-        Returns:
-            dict: A dictionary with violations as keys and activity profiles as values.
-        """
-        return self.activity_profiles
+        if activity_profile.get('deadlock', False):
+            print("Deadlock occurred during traversal.")

@@ -8,6 +8,7 @@ class ModifiedActivityExtraction:
         self.contraction_path = contraction_path or []
         self.violations = violations or []
         self.cycle_list = cycle_list or []
+
         
         self.source, self.sink = utils.get_source_and_target_vertices(self.R)
 
@@ -61,9 +62,19 @@ class ModifiedActivityExtraction:
         return join_classifications
 
     def _check_join_traversability(self, arc, current_vertex, traversed_counts=None):
+        """
+        Check if a join vertex can be traversed, enforcing AND-JOIN semantics.
+        Returns tuple: (is_traversable, required_arcs)
+        
+        Args:
+            arc: The arc being considered for traversal
+            current_vertex: The target vertex (join vertex being evaluated)
+            traversed_counts: Dictionary tracking how many times arcs have been traversed
+        """
         arc_str = self._safe_get_arc(arc)
         current_c_attr = self._get_c_attribute(arc)
 
+        # Non-join vertices are always traversable
         if current_vertex not in self.join_vertices:
             return True, []
 
@@ -72,23 +83,34 @@ class ModifiedActivityExtraction:
         incoming_arcs = join_info['incoming_arcs']
         c_attributes = join_info['c_attributes']
 
+        # OR-JOINs can always be traversed (at least one incoming path)
         if join_type == 'OR-JOIN':
             return True, []
 
+        # AND-JOIN requires all non-epsilon incoming arcs to be traversable
         if join_type == 'AND-JOIN':
             if current_c_attr != '0':
                 non_epsilon_arcs = [a for a,c in zip(incoming_arcs, c_attributes) if c != '0']
+                
+                # Check if all source vertices of non-epsilon arcs have been reached
                 for a in non_epsilon_arcs:
                     source, _ = self._safe_get_arc(a).split(', ')
                     if not self._is_vertex_reachable(source):
                         return False, []
-                return all(self._is_arc_traversable(a, traversed_counts) for a in non_epsilon_arcs), non_epsilon_arcs
+                
+                # Check if all non-epsilon arcs are traversable (within l-attribute limits)
+                traversable = all(
+                    self._is_arc_traversable(a, traversed_counts)
+                    for a in non_epsilon_arcs
+                )
+                return traversable, non_epsilon_arcs
             return False, []
 
+        # MIX-JOIN handling (combination of AND/OR semantics)
         if join_type == 'MIX-JOIN':
             if current_c_attr != '0':
                 return True, []
-            
+                
             non_epsilon_arcs = [a for a,c in zip(incoming_arcs, c_attributes) if c != '0']
             
             unique_non_epsilon = {c for c in c_attributes if c != '0'}
@@ -100,7 +122,10 @@ class ModifiedActivityExtraction:
                 if not self._is_vertex_reachable(source):
                     return False, []
                     
-            return all(self._is_arc_traversable(a, traversed_counts) for a in non_epsilon_arcs), non_epsilon_arcs
+            return all(
+                self._is_arc_traversable(a, traversed_counts)
+                for a in non_epsilon_arcs
+            ), non_epsilon_arcs
 
         return False, []
 
@@ -177,99 +202,89 @@ class ModifiedActivityExtraction:
 
     def _extract_profile_with_joins(self, contract_arc=None, force_include=None):
         activity_profile = {
-            'S': {},
+            'S': defaultdict(set),
             'deadlock': False,
             'successful': False,
             'sink_timestep': None,
-            'unreachable_joins': set(),
             'traversed_arcs': defaultdict(int),
-            'visited_states': set()
+            'visited_states': set(),
+            'required_arcs': set(),
+            'violation_cause': None
         }
 
         current_vertex = self.source
         timestep = 1
         iteration = 0
-        state_signature = (current_vertex, tuple())
+        # Track visited arcs to manage complex dependencies
+        visited_arcs = set()
+
+        def is_vertex_fully_explored(vertex, current_profile):
+            """Check if a vertex has exhausted all its outgoing arcs within l-attribute limits"""
+            return len([
+                arc for arc in self.R 
+                if self._safe_get_arc(arc).startswith(f"{vertex}, ") and
+                current_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc)
+            ]) == 0
 
         while current_vertex != self.sink and iteration < self.max_traversal_depth:
             iteration += 1
             
-            if state_signature in activity_profile['visited_states']:
-                activity_profile['deadlock'] = True
-                break
-            activity_profile['visited_states'].add(state_signature)
-
+            # Identify possible outgoing arcs
             current_arcs = [
                 arc for arc in self.R 
-                if self._safe_get_arc(arc).startswith(f"{current_vertex}, ")
+                if self._safe_get_arc(arc).startswith(f"{current_vertex}, ") and
+                activity_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc)
             ]
 
-            # Prioritize the forced inclusion arc if we're at its source
-            if force_include and any(
-                self._safe_get_arc(arc) == force_include 
-                and self._safe_get_arc(arc).startswith(f"{current_vertex}, ")
-                for arc in current_arcs
-            ):
-                current_arcs = [
-                    arc for arc in current_arcs 
-                    if self._safe_get_arc(arc) == force_include
-                ] + [
-                    arc for arc in current_arcs 
-                    if self._safe_get_arc(arc) != force_include
-                ]
+            # Prioritize forced inclusion
+            if force_include:
+                force_arcs = [arc for arc in current_arcs if self._safe_get_arc(arc) == force_include]
+                if force_arcs:
+                    current_arcs = force_arcs
 
+            # Prioritize sink arcs
+            sink_arcs = [arc for arc in current_arcs if self._safe_get_arc(arc).endswith(f", {self.sink}")]
+            if sink_arcs:
+                current_arcs = sink_arcs
+
+            # Validate join conditions
             traversable_arcs = []
-            required_arcs_map = {}
-            
             for arc in current_arcs:
                 arc_str = self._safe_get_arc(arc)
                 _, next_vertex = arc_str.split(', ')
 
-                if not self._is_vertex_reachable(next_vertex):
-                    continue
-
                 is_traversable, required_arcs = self._check_join_traversability(
                     arc, next_vertex, activity_profile['traversed_arcs']
                 )
-                arc_traversable = self._is_arc_traversable(arc, activity_profile['traversed_arcs'])
                 
-                if is_traversable and arc_traversable:
-                    if all(self._is_arc_traversable(req_arc, activity_profile['traversed_arcs']) 
-                    for req_arc in required_arcs):
-                        traversable_arcs.append(arc)
-                        required_arcs_map[arc_str] = required_arcs
+                if is_traversable:
+                    traversable_arcs.append((arc, required_arcs))
 
             if not traversable_arcs:
+                # If no arcs are traversable, mark deadlock
                 activity_profile['deadlock'] = True
                 break
 
-            selected_arc = traversable_arcs[0]
+            # Select first traversable arc
+            selected_arc, required_arcs = traversable_arcs[0]
             arc_str = self._safe_get_arc(selected_arc)
             _, next_vertex = arc_str.split(', ')
-            required_arcs = required_arcs_map.get(arc_str, [])
 
-            activity_profile['S'][timestep] = set()
-
-            # Update traversal counts before adding to profile
+            # Update profile
             activity_profile['traversed_arcs'][arc_str] += 1
-            self.traversed_arcs.add(arc_str)
             activity_profile['S'][timestep].add(arc_str)
-            
+            visited_arcs.add(arc_str)
+
+            # Process any required arcs from join conditions
             for req_arc in required_arcs:
                 req_arc_str = self._safe_get_arc(req_arc)
                 activity_profile['traversed_arcs'][req_arc_str] += 1
-                self.traversed_arcs.add(req_arc_str)
                 activity_profile['S'][timestep].add(req_arc_str)
-
-            # If this arc is in a cycle and we've reached its l-attribute limit, mark deadlock
-            if (arc_str in [self._safe_get_arc(a) for a in self.cycle_list] and 
-                activity_profile['traversed_arcs'][arc_str] >= self._get_l_attribute(selected_arc)):
-                activity_profile['deadlock'] = True
+                visited_arcs.add(req_arc_str)
 
             current_vertex = next_vertex
-            state_signature = (current_vertex, 
-                            tuple(sorted(activity_profile['traversed_arcs'].items())))
             
+            # Handle sink reaching
             if current_vertex == self.sink:
                 activity_profile['successful'] = True
                 activity_profile['sink_timestep'] = timestep
@@ -277,9 +292,13 @@ class ModifiedActivityExtraction:
 
             timestep += 1
 
-        if current_vertex != self.sink:
-            activity_profile['deadlock'] = True
-            activity_profile['S'] = {k:v for k,v in activity_profile['S'].items() if v}
+            # Prevent excessive iterations
+            if iteration == len(self.R) * 4:
+                activity_profile['deadlock'] = True
+                break
+
+        # Clean up empty timesteps
+        activity_profile['S'] = {k: v for k, v in activity_profile['S'].items() if v}
 
         return activity_profile
 
@@ -318,18 +337,23 @@ class ModifiedActivityExtraction:
             print("Invalid activity profile: Missing 'S' key")
             return
 
-        print("Timestep Sets:")
         for timestep, arcs in sorted(activity_profile['S'].items()):
             print(f"S({timestep}) = {set(arcs)}")
-        
-        print("\nSummary:")
-        summary_set = {f"S({n})" for n in sorted(activity_profile['S'].keys())}
-        print(f"S = {summary_set}")
-        
-        if activity_profile.get('successful', False):
-            print(f"Sink reached at timestep: {activity_profile.get('sink_timestep', 'N/A')}")
-        else:
-            print("Sink not reached.")
-        
+
+        if activity_profile['S']:
+            print("\nS = {" + ", ".join(f"S({ts})" for ts in sorted(activity_profile['S'].keys())) + "}")
         if activity_profile.get('deadlock', False):
-            print("Deadlock occurred during traversal.")
+            last_timestep = max(activity_profile['S'].keys()) if activity_profile['S'] else 0
+            print(f"\nSink was not reached (deadlock after timestep {last_timestep})")
+            # if activity_profile.get('violation_cause'):
+            #     print(f"Reason: {activity_profile['violation_cause']}")
+        elif activity_profile.get('sink_timestep'):
+            print(f"\nSink was reached at timestep {activity_profile['sink_timestep']}")
+            
+
+        # Display l-attribute usage using existing data
+        # print("\nArc Usage (traversed/limit):")
+        # all_arcs = {self._safe_get_arc(arc): self._get_l_attribute(arc) for arc in self.R}
+        # for arc_str, limit in sorted(all_arcs.items()):
+        #     used = activity_profile['traversed_arcs'].get(arc_str, 0)
+        #     print(f"{arc_str}: {used}/{limit}")

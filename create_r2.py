@@ -142,11 +142,17 @@ def ProcessR2(R2):
         # Ensure every arc gets an eRU value, defaulting to '0' if not set during cycle processing
         for _ in range(len(merged_arcs) - len(eRU_list)):
             eRU_list.append('0')  # Append '0' as a string for missing eRU values
-            
+    
+    def convert_arc_format(arc):
+        return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        
+    def convert_arc_list_format(arc_list):
+        return [convert_arc_format(arc) for arc in arc_list] 
+           
     # Print results for debugging
     print("R2:")
     print('-' * 20)
-    print(f"Arcs List ({len(arcs_list)}): {arcs_list}")
+    print(f"Arcs List ({len(arcs_list)}): {convert_arc_list_format(arcs_list)}")
     print(f"Vertices List ({len(vertices_list)}): {vertices_list}")
     print(f"C-attribute List ({len(c_attribute_list)}): {c_attribute_list}")
     print(f"L-attribute List ({len(l_attribute_list)}): {l_attribute_list}")

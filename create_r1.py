@@ -196,16 +196,24 @@ def ProcessR1(arcs_list, R1, Centers_list, In_list, Out_list, R2):
     abstract_c = [str(r.get('c-attribute')) for r in added_abstract_arcs] 
     abstract_eRU = [str(r.get('eRU')) for r in added_abstract_arcs] 
    
+    def convert_arc_format(arc):
+        return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        
+    def convert_arc_list_format(arc_list):
+        return [convert_arc_format(arc) for arc in arc_list]
 
+    'x1, x2'
+    ('x1', 'x2')
+    '(x1, x2)'
     # Print debugging results
     print("R1:")
     print('-' * 20)
-    print(f"Arcs List ({len(arcs_list_R1 + abstract_list)}): {arcs_list_R1 + abstract_list}")
+    print(f"Arcs List ({len(arcs_list_R1 + abstract_list)}): {convert_arc_list_format(arcs_list_R1 + abstract_list)}")
     # print(f"Vertices List ({len(vertices_list_R1)}): {vertices_list_R1}")
     print(f"C-attribute List ({len(c_attribute_list_R1 + abstract_c)}): {c_attribute_list_R1 + abstract_c}")
     print(f"L-attribute List ({len(l_attribute_list_R1 + abstract_l)}): {l_attribute_list_R1 + abstract_l }")
     print(f"eRU List ({len(eRU_list + abstract_eRU)}): {eRU_list + abstract_eRU}")
-    print(f"\nAbstract Arcs List: ({len(abstract_list)}) : {abstract_list} ")
+    print(f"\nAbstract Arcs List: ({len(abstract_list)}) : {convert_arc_list_format(abstract_list)} ")
     print(f"C-attribute List ({len(abstract_c)}): {abstract_c}")
     print(f"L-attribute List ({len(abstract_l)}): {abstract_l}")
     print(f"eRU List ({len(abstract_eRU)}): {abstract_eRU}")

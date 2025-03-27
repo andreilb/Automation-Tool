@@ -163,8 +163,8 @@ class ModifiedActivityExtraction:
         self.activity_profiles = {}
         
         for contract_arc, path_info in self.contraction_path.items():
-            print(f"\nProcessing contract arc: {contract_arc}")
-            print(f"Contracted Path: {path_info.get('contracted_path', [])}")
+            # print(f"\nProcessing contract arc: {contract_arc}")
+            # print(f"Contracted Path: {path_info.get('contracted_path', [])}")
             
             # Reset traversal tracking for each profile
             self.traversed_arcs = set()
@@ -172,7 +172,7 @@ class ModifiedActivityExtraction:
             
             # Get successful contractions for this path
             successful_contractions = path_info.get('successful_contractions', [])
-            print(f"Successful Contractions: {successful_contractions}")
+            # print(f"Successful Contractions: {successful_contractions}")
             
             # Find the original arc from successful contractions that matches the contract_arc
             profile_arc = next(
@@ -185,18 +185,18 @@ class ModifiedActivityExtraction:
                 contracted_path = path_info.get('contracted_path', [])
                 if contracted_path:
                     profile_arc = contracted_path[0]
-                    print(f"Using first contracted path arc: {profile_arc}")
+                    # print(f"Using first contracted path arc: {profile_arc}")
                 else:
                     profile_arc = None
-                    print("No profile arc found")
-            else:
-                print(f"Using successful contraction arc: {profile_arc}")
+                    # print("No profile arc found")
+            # else:
+            #     print(f"Using successful contraction arc: {profile_arc}")
             
-            print("Arcs in R:", [self._safe_get_arc(arc) for arc in self.R])
+            # print("Arcs in R:", [self._safe_get_arc(arc) for arc in self.R])
             
             # Modified to force include the violation and exhaust its l-attribute
             profile = self._extract_profile_with_joins(profile_arc, force_include=contract_arc)
-            print(f"Generated profile: {profile}")
+            # print(f"Generated profile: {profile}")
             
             self.activity_profiles[contract_arc] = profile
 
@@ -363,8 +363,22 @@ class ModifiedActivityExtraction:
 
     def print_activity_profiles(self):
         for contract_arc, activity_profile in self.activity_profiles.items():
-            print(f"\n--- Activity Profile for Contract Arc: {contract_arc} ---")
+            print(f"\n--- Activity Profile for ({contract_arc}) ---")
             self._print_activity_profile(activity_profile)
+
+    def convert_arc_format(self, arc):
+        """Convert arc to consistent string format whether it's a tuple, string, or list."""
+        if isinstance(arc, str):
+            # Handle string format like "a, b"
+            return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        elif isinstance(arc, (tuple, list)) and len(arc) == 2:
+            # Handle tuple or list format
+            return f"({arc[0]}, {arc[1]})"
+        else:
+            return str(arc)  # fallback for unexpected formats
+
+    def convert_arc_list_format(self, arc_list):
+        return [self.convert_arc_format(arc) for arc in arc_list]
 
     def _print_activity_profile(self, activity_profile):
         if 'S' not in activity_profile:
@@ -372,7 +386,7 @@ class ModifiedActivityExtraction:
             return
 
         for timestep, arcs in sorted(activity_profile['S'].items()):
-            print(f"S({timestep}) = {set(arcs)}")
+            print(f"S({timestep}) = {self.convert_arc_list_format(set(arcs))}")
 
         if activity_profile['S']:
             print("\nS = {" + ", ".join(f"S({ts})" for ts in sorted(activity_profile['S'].keys())) + "}")

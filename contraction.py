@@ -322,6 +322,20 @@ class ContractionPath:
                 seen_failed_arcs.add(item['arc'])
         
         return unique_contracted_path, unique_successful, unique_failed
+    
+    def convert_arc_format(self, arc):
+        """Convert arc to consistent string format whether it's a tuple, string, or list."""
+        if isinstance(arc, str):
+            # Handle string format like "a, b"
+            return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        elif isinstance(arc, (tuple, list)) and len(arc) == 2:
+            # Handle tuple or list format
+            return f"({arc[0]}, {arc[1]})"
+        else:
+            return str(arc)  # fallback for unexpected formats
+
+    def convert_arc_list_format(self, arc_list):
+        return [self.convert_arc_format(arc) for arc in arc_list]
 
     def print_contraction_paths(self):
         """
@@ -329,7 +343,7 @@ class ContractionPath:
         """
         print("\n--- Contraction Paths for Violations ---")
         for violation_arc, path_data in self.contraction_paths.items():
-            print(f"\nViolation Arc: {violation_arc}")
+            print(f"\nViolating Arc: ({violation_arc})")
             
             # Determine unreached arcs
             all_arcs = {arc_data['arc'] for arc_data in self.R}
@@ -342,21 +356,21 @@ class ContractionPath:
             if path_data['contracted_path']:
                 print("Contracted Path:")
                 contracted_tuples = [tuple(arc.split(', ')) for arc in path_data['contracted_path']]
-                print(contracted_tuples)
+                print(self.convert_arc_list_format(contracted_tuples))
             
             if path_data['successful_contractions']:
                 print("\nSuccessful Contractions:")
                 successful_arcs = [contract['arc'] for contract in path_data['successful_contractions']]
-                print(successful_arcs)
+                print(self.convert_arc_list_format(successful_arcs))
             
             if path_data['failed_contractions']:
                 print("\nFailed Contractions:")
                 failed_arcs = [failed['arc'] for failed in path_data['failed_contractions']]
-                print(failed_arcs)
+                print(self.convert_arc_list_format(failed_arcs))
             
             if unreached_arcs:
                 print("\nUnreached Arcs:")
-                print(list(unreached_arcs))
+                print(self.convert_arc_list_format(list(unreached_arcs)))
 
     def create_contraction_paths_for_violations(self):
         """

@@ -232,7 +232,7 @@ class RDLTProcessorGUI:
     def run_rdlt_processing(self, input_filepath):
         """Run the RDLT processing logic from the original script"""
         # Initialize activity_profile to None
-        activity_profile = None
+        self.activity_profile = None
 
         # Initialize the RDLT input processor
         input_instance = Input_RDLT(input_filepath)
@@ -245,7 +245,7 @@ class RDLTProcessorGUI:
         L_attribute_list = input_instance.L_attribute_list
         C_attribute_list = input_instance.C_attribute_list
 
-        # Get R1 and R2 from input_rdlt
+        # Get R1 from input_rdlt
         initial_R1 = input_instance.getR('R1')
         
         # Process R2 (RBS) if centers exist
@@ -255,7 +255,6 @@ class RDLTProcessorGUI:
             initial_R2 = input_instance.getRs()  # Get all regions except 'R1'
             
             # Use TestJoins to check if all joins in R2 are OR-joins
-            from joins import TestJoins
             flattened_R2 = []
             for r2_dict in initial_R2:
                 for r2_key, r2_value in r2_dict.items():
@@ -264,49 +263,64 @@ class RDLTProcessorGUI:
             check_result = TestJoins.checkSimilarTargetVertexAndUpdate(initial_R1, flattened_R2)
             
             if check_result == initial_R1:
-                # All joins are OR-joins, use the standard processing with abstract arcs
-                R2 = ProcessR2(initial_R2)
+                # All joins are OR-joins, process R2 separately and use only R1 as input
+                print("All joins in R2 are OR-joins. Processing R2 separately and using only R1 for matrix evaluation.\n")
                 
-                # Process R1 with abstract arcs
-                R1 = ProcessR1(
+                # Process R2
+                processed_R2 = ProcessR2(initial_R2)
+                
+                # Process R1 with abstract arcs (using processed R2)
+                processed_R1 = ProcessR1(
                     Arcs_list,
                     initial_R1,
                     Centers_list,
                     In_list,
                     Out_list,
-                    R2
+                    processed_R2
                 )
-                
-                # Cycle detection for R1 and R2
-                cycle_R1 = Cycle(R1)
-                C_R1 = cycle_R1.evaluate_cycle()
-                cycle_list_R1 = cycle_R1.get_cycle_list()
-                
-                cycle_R2 = Cycle(R2)
+
+                cycle_R2 = Cycle(processed_R2)
                 C_R2 = cycle_R2.evaluate_cycle()
                 cycle_list_R2 = cycle_R2.get_cycle_list()
                 
+                # Cycle detection for processed R1
+                cycle_R1 = Cycle(processed_R1)
+                C_R1 = cycle_R1.evaluate_cycle()
+                cycle_list_R1 = cycle_R1.get_cycle_list()
+                
+                # Store cycles for later use
+                self.cycle_list = cycle_list_R1
+                self.current_R = processed_R1  # Store processed R1 for later use
+                
                 # Convert data from dict to matrix (R1 only)
-                matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
+                self.matrix_instance = Matrix(processed_R1, self.cycle_list)
                 # Perform matrix evaluation to determine L-Safeness
-                l_safe, matrix = matrix_instance.evaluate()
+                l_safe, matrix = self.matrix_instance.evaluate()
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('=' * 60)
                 print("Generated Matrix:\n")
-                matrix_instance.print_matrix()
+                self.matrix_instance.print_matrix()
                 print('=' * 60)
                 
             else:
-                # Not all joins are OR-joins, use direct processing without abstract arcs
-        
-                # Extract and flatten R2 data
-                R2 = []
-                for r2_dict in initial_R2:
-                    for r2_key, r2_value in r2_dict.items():
-                        R2.extend(r2_value)
+                # Not all joins are OR-joins, process both R1 and R2 together
+                print("R2 contains non-OR joins. Processing both R1 and R2 together.\n")
                 
-                # Combine R1 and R2 into a single list
-                combined_R = initial_R1 + R2
+                # Process R2 first
+                processed_R2 = ProcessR2(initial_R2)
+                
+                # Process R1 with abstract arcs (using processed R2)
+                processed_R1 = ProcessR1(
+                    Arcs_list,
+                    initial_R1,
+                    Centers_list,
+                    In_list,
+                    Out_list,
+                    processed_R2
+                )
+                
+                # Combine processed R1 and R2 into a single list
+                combined_R = processed_R1 + processed_R2
 
                 # Create cycle instance and detect cycles
                 cycle_combined = Cycle(combined_R)
@@ -316,12 +330,12 @@ class RDLTProcessorGUI:
                 combined_R = cycle_combined.update_eRU_values()
 
                 # Get the updated cycle list
-                cycle_list_combined = cycle_combined.get_cycle_list()
+                self.cycle_list = cycle_combined.get_cycle_list()
+                self.current_R = combined_R  # Store combined R for later use
                 
                 # Print the combined list for debugging
-                print("R1 and R2:")
+                print("Processed R1 and R2:")
                 print('-' * 20)
-                # print(f"Total arcs: {len(combined_R)}")
                 arcs_list_combined = [r['arc'] for r in combined_R if isinstance(r, dict) and 'arc' in r]
                 vertices_list_combined = sorted(set([v for arc in arcs_list_combined for v in arc.split(', ')]))
                 c_attribute_list_combined = [r.get('c-attribute', '') for r in combined_R if isinstance(r, dict)]
@@ -335,15 +349,14 @@ class RDLTProcessorGUI:
                 print(f"eRU List ({len(eRU_list_combined)}): {eRU_list_combined}")
                 print('=' * 60)
                 
-                
-                # Convert data from dict to matrix (combined R1 and R2)
-                matrix_instance = Matrix(combined_R, cycle_combined.Cycle_List, In_list, Out_list)
+                # Convert data from dict to matrix (combined processed R1 and R2)
+                self.matrix_instance = Matrix(combined_R, self.cycle_list, In_list, Out_list)
                 # Perform matrix evaluation to determine L-Safeness
-                l_safe, matrix = matrix_instance.evaluate()
+                l_safe, matrix = self.matrix_instance.evaluate()
                 print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
                 print('=' * 60)
                 print("Generated Matrix:\n")
-                matrix_instance.print_matrix()
+                self.matrix_instance.print_matrix()
                 print('=' * 60)
         else:
             # No centers found, process R1 directly
@@ -358,16 +371,17 @@ class RDLTProcessorGUI:
             # Detect cycles in R1
             cycle_R1 = Cycle(R1)
             C_R1 = cycle_R1.evaluate_cycle()
-            cycle_list_R1 = cycle_R1.get_cycle_list()
+            self.cycle_list = cycle_R1.get_cycle_list()
+            self.current_R = R1  # Store R1 for later use
             
             # Convert data from dict to matrix
-            matrix_instance = Matrix(R1, cycle_R1.Cycle_List)
+            self.matrix_instance = Matrix(R1, self.cycle_list)
             # Perform matrix evaluation to determine L-Safeness
-            l_safe, matrix = matrix_instance.evaluate()
+            l_safe, matrix = self.matrix_instance.evaluate()
             print(f"\nMatrix Evaluation Result: {'RDLT is L-Safe.' if l_safe == True else 'RDLT is NOT L-Safe.'}\n")
             print('=' * 60)
             print("Generated Matrix:\n")
-            matrix_instance.print_matrix()
+            self.matrix_instance.print_matrix()
             print('=' * 60)
         
         # Print final verification result
@@ -375,37 +389,34 @@ class RDLTProcessorGUI:
             print("\n=========== SUMMARY ===========")
             print("\n RDLT is L-safe and CLASSICAL SOUND.\n")
         else:
-            violations = matrix_instance.get_violations()
+            violations = self.matrix_instance.get_violations()
             print('=' * 60)
 
-            # Initialize Contraction Path
-            contraction_path = ContractionPath(combined_R if 'combined_R' in locals() else R1, violations)
+            # Initialize Contraction Path with current R (could be R1 or combined_R)
+            contraction_path = ContractionPath(self.current_R, violations)
 
             # Call the contraction process and store the results
             path, failed = contraction_path.get_contraction_paths()
             # Print the final contraction paths
-            print(f"\nContraction path: {path}\n")
-            print(f"Failed contractions: {failed}\n")
+            # print(f"\nContraction path: {path}\n")
+            # print(f"Failed contractions: {failed}\n")
 
-            contraction_path.print_contraction_paths()
+            # contraction_path.print_contraction_paths()
 
-            # If using combined R1 and R2, pass In_list and Out_list to Modified Activity Extraction
-            if 'combined_R' in locals():
-                # Use cycle_list when creating ModifiedActivityExtraction
-                if Centers_list:
-                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, cycle_combined.Cycle_List, R2, In_list, Out_list)
-                    activity_profile = modified_activity.extract_activity_profile()
-                    modified_activity.print_activity_profile(activity_profile)
+            # Run Modified Activity Extraction with the stored cycle list
+            modified_activity = ModifiedActivityExtraction(
+                self.current_R,  # Use the stored R (R1 or combined_R)
+                violations, 
+                path, 
+                self.cycle_list  # Using the stored cycle list
+            )
+            
+            self.activity_profile = modified_activity.extract_activity_profiles()
+            # Print all activity profiles
+            modified_activity.print_activity_profiles()
 
-                else:
-                    modified_activity = ModifiedActivityExtraction(combined_R, path, violations, cycle_combined.Cycle_List)
-                    activity_profile = modified_activity.extract_activity_profile()
-                    modified_activity.print_activity_profile(activity_profile)
-            else:
-                # Run Modified Activity Extraction without in_list and out_list
-                modified_activity = ModifiedActivityExtraction(R1, path, violations, cycle_R1.Cycle_List)
-                activity_profile = modified_activity.extract_activity_profile()
-                modified_activity.print_activity_profile(activity_profile)
+            print("\n=========== SUMMARY ===========")
+            print("\n RDLT is not L-safe.\n")
 
 
 def main():

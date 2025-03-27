@@ -128,6 +128,12 @@ class Matrix:
             self.rdlt_structure[i][6] = cycle_vector[i]
         return cycle_vector
 
+    def convert_arc_format(self, arc):
+        return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        
+    def convert_arc_list_format(self, arc_list):
+        return [self.convert_arc_format(arc) for arc in arc_list]
+    
     def setRDLT_Structure(self):
         """
         Creates the RDLT structure matrix from the provided arc data and initializes various attributes.
@@ -155,7 +161,7 @@ class Matrix:
         for row in self.rdlt_structure:
             # Create a new list containing only the specified columns
             filtered_row = [row[col] for col in columns_to_print if col < len(row)]
-            print(filtered_row)
+            print([self.convert_arc_format(filtered_row[0])] + filtered_row[1:])
         print('=' * 60)
         return matrix
 
@@ -843,7 +849,6 @@ class Matrix:
             arc = r[0]
             js = -1 if arc in involved_arcs else 1
             r[12] = self.elementMult(js, r[7])
-            r[12] = self.literalOR(r[12], r[7])
 
         return join_safe
     
@@ -1024,7 +1029,7 @@ class Matrix:
                     # Print each violation component separately for debugging
                     print(f"\nJOIN-Safeness Violation:")
                     print(f"  r-id: {violation_details['r-id']}")
-                    print(f"  arc: {violation_details['arc']}")
+                    print(f"  arc: {self.convert_arc_format(violation_details['arc'])}")
                     # print(f"  Split Origin: {violation_details['split_origin']}")
                     # print(f"  Join Vertex: {violation_details['join_vertex']}")
                     print(f"  Violation: {violation_details['violation']}")
@@ -1040,7 +1045,7 @@ class Matrix:
                 self.violations.append(violation_details)
                 
                 print(f"\nLoop-Safeness Violation:")
-                print(f"  Arc: {violation_details['arc']}")
+                print(f"  Arc: {self.convert_arc_format(violation_details['arc'])}")
                 print(f"  r-id: {violation_details['r-id']}")
 
         # Process Safeness of Critical Arcs (CAs) Violations
@@ -1048,13 +1053,13 @@ class Matrix:
             for violation in self.safeCA_violations:
                 violation_details = {
                     "type": "Safeness of Critical Arcs",
-                    "arc": violation.get("arc", "Unknown"),
+                    "arc": self.convert_arc_format(violation.get("arc", "Unknown")),
                     "r-id": violation.get("r-id", "Unknown")
                 }
                 self.violations.append(violation_details)
                 
                 print(f"\nSafeness Violation:")
-                print(f"  Arc: {violation_details['arc']}")
+                print(f"  Arc: {self.convert_arc_format(violation_details['arc'])}")
                 print(f"  r-id: {violation_details['r-id']}")
 
         # If no violations were found, print a message
@@ -1080,7 +1085,8 @@ class Matrix:
         for row in self.rdlt_structure:
             # Create a new list containing only the specified columns
             filtered_row = [row[col] for col in columns_to_print if col < len(row)]
-            print(filtered_row)
+            # print(filtered_row)
+            print([self.convert_arc_format(filtered_row[0])] + filtered_row[1:])
 
     def get_matrix_data(self):
         return self.matrix_data

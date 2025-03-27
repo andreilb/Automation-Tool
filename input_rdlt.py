@@ -107,20 +107,27 @@ class Input_RDLT:
         self.C_attribute_list = [i['c-attribute'] for i in R_list]
         self.L_attribute_list = [i['l-attribute'] for i in R_list]
 
+        def convert_arc_format(arc):
+            return f"({arc.split(', ')[0]}, {arc.split(', ')[1]})"
+        
+        def convert_arc_list_format(arc_list):
+            return [convert_arc_format(arc) for arc in arc_list]
+
         # Print the extracted data for debugging
         print(f"\nInput RDLT: ")
         print('-' * 20)
-        print(f"Arcs List ({len(self.Arcs_List)}): ", self.Arcs_List)
+        print(f"Arcs List ({len(self.Arcs_List)}): ", convert_arc_list_format(self.Arcs_List))
         print(f"Vertices List ({len(self.Vertices_List)}): ", self.Vertices_List)
         print(f"C-attribute List ({len(self.C_attribute_list)}): ", self.C_attribute_list)
         print(f"L-attribute List ({len(self.L_attribute_list)}): ", self.L_attribute_list)
+  
         if self.Centers_list:
             print('-' * 20)
             print(f"RBS components:")
             print('-' * 20)
             print(f"Centers ({len(self.Centers_list)}): ", self.Centers_list)
-            print(f"In ({len(self.In_list)}): ", self.In_list)
-            print(f"Out ({len(self.Out_list)}): ", self.Out_list)
+            print(f"In ({len(self.In_list)}): ", convert_arc_list_format(self.In_list))
+            print(f"Out ({len(self.Out_list)}): ", convert_arc_list_format(self.Out_list))
         print('=' * 60)
 
         # Process the RDLT structure for R2, R3, etc., based on centers and arcs

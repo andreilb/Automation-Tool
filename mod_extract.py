@@ -8,6 +8,10 @@ class ModifiedActivityExtraction:
         self.contraction_path = contraction_path or []
         self.violations = violations or []
         self.cycle_list = cycle_list or []
+        self.failed_contractions = set()
+        for path_info in self.contraction_path.values():
+            for fc in path_info.get('failed_contractions', []):
+                self.failed_contractions.add(self._safe_get_arc(fc))
 
         
         self.source, self.sink = utils.get_source_and_target_vertices(self.R)
@@ -65,11 +69,6 @@ class ModifiedActivityExtraction:
         """
         Check if a join vertex can be traversed, enforcing AND-JOIN semantics.
         Returns tuple: (is_traversable, required_arcs)
-        
-        Args:
-            arc: The arc being considered for traversal
-            current_vertex: The target vertex (join vertex being evaluated)
-            traversed_counts: Dictionary tracking how many times arcs have been traversed
         """
         arc_str = self._safe_get_arc(arc)
         current_c_attr = self._get_c_attribute(arc)
@@ -89,22 +88,25 @@ class ModifiedActivityExtraction:
 
         # AND-JOIN requires all non-epsilon incoming arcs to be traversable
         if join_type == 'AND-JOIN':
-            if current_c_attr != '0':
-                non_epsilon_arcs = [a for a,c in zip(incoming_arcs, c_attributes) if c != '0']
+            non_epsilon_arcs = [a for a,c in zip(incoming_arcs, c_attributes) if c != '0']
+            
+            # For AND-JOIN, we can only traverse if we're coming from one of the required arcs
+            # AND all other required arcs are either already traversed or can be traversed now
+            if current_c_attr == '0':  # epsilon arc
+                return False, []
                 
-                # Check if all source vertices of non-epsilon arcs have been reached
-                for a in non_epsilon_arcs:
-                    source, _ = self._safe_get_arc(a).split(', ')
-                    if not self._is_vertex_reachable(source):
-                        return False, []
-                
-                # Check if all non-epsilon arcs are traversable (within l-attribute limits)
-                traversable = all(
-                    self._is_arc_traversable(a, traversed_counts)
-                    for a in non_epsilon_arcs
-                )
-                return traversable, non_epsilon_arcs
-            return False, []
+            # Check if all source vertices of non-epsilon arcs have been reached
+            for a in non_epsilon_arcs:
+                source, _ = self._safe_get_arc(a).split(', ')
+                if not self._is_vertex_reachable(source):
+                    return False, []
+            
+            # Check if all non-epsilon arcs are traversable (within l-attribute limits)
+            traversable = all(
+                self._is_arc_traversable(a, traversed_counts)
+                for a in non_epsilon_arcs
+            )
+            return traversable, non_epsilon_arcs
 
         # MIX-JOIN handling (combination of AND/OR semantics)
         if join_type == 'MIX-JOIN':
@@ -212,44 +214,69 @@ class ModifiedActivityExtraction:
             'violation_cause': None
         }
 
+        # Get failed contractions for this specific path
+        current_failed_contractions = set()
+        for path_info in self.contraction_path.values():
+            if any(self._safe_get_arc(arc) == contract_arc for arc in path_info.get('contracted_path', [])):
+                current_failed_contractions.update(
+                    self._safe_get_arc(fc) for fc in path_info.get('failed_contractions', [])
+                )
+                break
+
+        # Prepare contraction path for this specific contract arc
+        current_contracted_path = None
+        for path_info in self.contraction_path.values():
+            contracted_path = path_info.get('contracted_path', [])
+            successful_contractions = path_info.get('successful_contractions', [])
+            
+            # Find a path that matches the contract arc or contains it
+            path_matches = [
+                path for path in [contracted_path, successful_contractions]
+                if any(self._safe_get_arc(arc) == contract_arc for arc in path)
+            ]
+            
+            if path_matches:
+                current_contracted_path = path_matches[0]
+                break
+
+        # If no contracted path found, use original approach
+        if not current_contracted_path:
+            current_contracted_path = [contract_arc] if contract_arc else []
+
         current_vertex = self.source
         timestep = 1
         iteration = 0
-        # Track visited arcs to manage complex dependencies
-        visited_arcs = set()
 
-        def is_vertex_fully_explored(vertex, current_profile):
-            """Check if a vertex has exhausted all its outgoing arcs within l-attribute limits"""
-            return len([
-                arc for arc in self.R 
-                if self._safe_get_arc(arc).startswith(f"{vertex}, ") and
-                current_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc)
-            ]) == 0
-
+        # Use the contracted path for traversal
         while current_vertex != self.sink and iteration < self.max_traversal_depth:
             iteration += 1
-            
-            # Identify possible outgoing arcs
-            current_arcs = [
-                arc for arc in self.R 
-                if self._safe_get_arc(arc).startswith(f"{current_vertex}, ") and
-                activity_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc)
+
+            # Prioritize arcs from the contracted path
+            next_arcs_in_path = [
+                arc for arc in current_contracted_path 
+                if (self._safe_get_arc(arc).startswith(f"{current_vertex}, ") and
+                self._safe_get_arc(arc) not in current_failed_contractions and  # Add this
+                activity_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc))
             ]
 
-            # Prioritize forced inclusion
-            if force_include:
-                force_arcs = [arc for arc in current_arcs if self._safe_get_arc(arc) == force_include]
-                if force_arcs:
-                    current_arcs = force_arcs
+            # If no path arcs, fall back to original R graph arcs
+            if not next_arcs_in_path:
+                next_arcs_in_path = [
+                    arc for arc in self.R 
+                    if (self._safe_get_arc(arc).startswith(f"{current_vertex}, ") and
+                    self._safe_get_arc(arc) not in current_failed_contractions and
+                    arc not in path_info.get('unreached_arcs', []) and  # Add this
+                    activity_profile['traversed_arcs'].get(self._safe_get_arc(arc), 0) < self._get_l_attribute(arc))
+                ]
 
             # Prioritize sink arcs
-            sink_arcs = [arc for arc in current_arcs if self._safe_get_arc(arc).endswith(f", {self.sink}")]
+            sink_arcs = [arc for arc in next_arcs_in_path if self._safe_get_arc(arc).endswith(f", {self.sink}")]
             if sink_arcs:
-                current_arcs = sink_arcs
+                next_arcs_in_path = sink_arcs
 
             # Validate join conditions
             traversable_arcs = []
-            for arc in current_arcs:
+            for arc in next_arcs_in_path:
                 arc_str = self._safe_get_arc(arc)
                 _, next_vertex = arc_str.split(', ')
 
@@ -273,14 +300,12 @@ class ModifiedActivityExtraction:
             # Update profile
             activity_profile['traversed_arcs'][arc_str] += 1
             activity_profile['S'][timestep].add(arc_str)
-            visited_arcs.add(arc_str)
 
             # Process any required arcs from join conditions
             for req_arc in required_arcs:
                 req_arc_str = self._safe_get_arc(req_arc)
                 activity_profile['traversed_arcs'][req_arc_str] += 1
                 activity_profile['S'][timestep].add(req_arc_str)
-                visited_arcs.add(req_arc_str)
 
             current_vertex = next_vertex
             
@@ -314,18 +339,27 @@ class ModifiedActivityExtraction:
         return current_count < l_attribute
 
     def _get_l_attribute(self, arc):
-        """Get l-attribute of an arc, defaulting to 1"""
-        return int(arc.get('l-attribute', 1))
+        """Get l-attribute of an arc from self.R, defaulting to 1"""
+        # Find the matching arc in self.R
+        for r_arc in self.R:
+            if self._safe_get_arc(r_arc) == self._safe_get_arc(arc):
+                return int(r_arc.get('l-attribute', 1) if isinstance(r_arc, dict) else 1)
+        return 1  # Default if no match found
 
+    def _get_c_attribute(self, arc):
+        """Get c-attribute of an arc from self.R, defaulting to '0'"""
+        # Find the matching arc in self.R
+        for r_arc in self.R:
+            if self._safe_get_arc(r_arc) == self._safe_get_arc(arc):
+                return r_arc.get('c-attribute', '0') if isinstance(r_arc, dict) else '0'
+        return '0'  # Default if no match found
+    
     def _safe_get_arc(self, arc_data):
         if isinstance(arc_data, str):
             return arc_data
         elif isinstance(arc_data, dict):
             return arc_data.get('arc', str(arc_data))
         return str(arc_data)
-
-    def _get_c_attribute(self, arc):
-        return arc.get('c-attribute', '0')
 
     def print_activity_profiles(self):
         for contract_arc, activity_profile in self.activity_profiles.items():

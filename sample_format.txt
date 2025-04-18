@@ -1,0 +1,50 @@
+# Sample RDLT Input File (RDLT with an RBS)
+# This file demonstrates the structure of an RDLT input file
+
+# R section: list of arcs with their c-attributes and l-attributes
+# OUT section: list of outgoing arcs from the RBS (separated by new line)
+# format: vertex1, vertex2, c-attribute, l-attribute 
+x1, x2, 0, 5
+x2, x3, a, 4
+x3, x6, 0, 3
+x4, x3, 0, 2
+x4, x5, b, 7
+x5, x6, a, 2
+(these are optional sections and should only be included if there is an RBS present)
+# CENTER section: list of center vertices (each center separated by a comma)
+CENTER
+x3
+# IN section: list of incoming arcs to the RBS (separated by new line)
+IN
+x4, x3
+# OUT section: list of outgoing arcs from the RBS (separated by new line)
+OUT
+x5, x6
+
+
+# Sample RDLT Input File (RDLT with multiple RBS)
+# This file demonstrates the structure of an RDLT input file with multiple RBS structures
+
+# R section: list of arcs with their c-attributes and l-attributes (separated by new line)
+# format: vertex1, vertex2, c-attribute, l-attribute
+x7, x8, 0, 3
+x8, x9, a, 5
+x9, x10, b, 2
+x11, x12, a, 4
+x12, x13, 0, 6
+x13, x14, c, 3
+x14, x15, b, 1
+(these are optional sections and should only be included if there is an RBS present)
+# CENTER section: list of center vertices (each center separated by a comma)
+CENTER
+x8, x12
+# IN section: list of incoming arcs to the RBS (separated by new line)
+IN
+x7, x8
+x11, x12
+# OUT section: list of outgoing arcs from the RBS (separated by new line)
+OUT
+x9, x10
+x13, x14
+
+Note: Please refer to the files in rdlt_text folder for more specific examples.
